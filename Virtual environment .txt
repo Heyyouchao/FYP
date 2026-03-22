@@ -1,0 +1,5 @@
+During the course of this work, the computational environment was upgraded from Python 3.9 to Python 3.11, along with corresponding updates to key scientific libraries. Such changes can introduce minor numerical variations in model training and probability estimation due to differences in underlying implementations.
+
+As a result, small shifts were observed in model outputs and derived decision thresholds (e.g., routing threshold τ and SAFE_MARGIN). To ensure methodological consistency, all thresholds and evaluation metrics reported in this thesis were re-computed using the updated environment and the same validation-based selection procedures.
+
+Importantly, these changes did not alter the qualitative behaviour of the system. The observed trade-offs between attack loss and non-attack recovery remained consistent, and the final system configuration reflects a stable and reproducible operating point under the updated environment.
