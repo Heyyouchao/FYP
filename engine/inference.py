@@ -4,7 +4,6 @@
 
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 import joblib
 
 # ============================================================
@@ -39,31 +38,16 @@ M2_LABELS = {
 # SCENARIO LOOKUP
 # ============================================================
 SCENARIO_LOOKUP = {
-
-    # =========================
-    # NATURAL EVENTS — SLG FAULTS
-    # =========================
     1: "Fault from 10–19% on L1",
     2: "Fault from 20–79% on L1",
     3: "Fault from 80–90% on L1",
     4: "Fault from 10–19% on L2",
     5: "Fault from 20–79% on L2",
     6: "Fault from 80–90% on L2",
-
-    # =========================
-    # NATURAL EVENTS — MAINTENANCE
-    # =========================
     13: "Line L1 maintenance",
     14: "Line L2 maintenance",
-
-    # =========================
-    # NO EVENT
-    # =========================
     41: "Normal Operation (load changes)",
 
-    # =========================
-    # DATA INJECTION ATTACKS
-    # =========================
     7:  "Fault 10–19% on L1 with tripping command",
     8:  "Fault 20–79% on L1 with tripping command",
     9:  "Fault 80–90% on L1 with tripping command",
@@ -71,23 +55,13 @@ SCENARIO_LOOKUP = {
     11: "Fault 20–79% on L2 with tripping command",
     12: "Fault 80–90% on L2 with tripping command",
 
-    # =========================
-    # REMOTE TRIPPING — SINGLE RELAY
-    # =========================
     15: "Command Injection to R1",
     16: "Command Injection to R2",
     17: "Command Injection to R3",
     18: "Command Injection to R4",
-
-    # =========================
-    # REMOTE TRIPPING — MULTI RELAY
-    # =========================
     19: "Command Injection to R1 and R2",
     20: "Command Injection to R3 and R4",
 
-    # =========================
-    # RELAY SETTING CHANGE — SINGLE RELAY
-    # =========================
     21: "Fault 10–19% on L1 with R1 disabled & fault",
     22: "Fault 20–90% on L1 with R1 disabled & fault",
     23: "Fault 10–49% on L1 with R2 disabled & fault",
@@ -99,17 +73,11 @@ SCENARIO_LOOKUP = {
     29: "Fault 10–79% on L2 with R4 disabled & fault",
     30: "Fault 80–90% on L2 with R4 disabled & fault",
 
-    # =========================
-    # RELAY SETTING CHANGE — TWO RELAYS + FAULT
-    # =========================
     35: "Fault 10–49% on L1 with R1 and R2 disabled & fault",
     36: "Fault 50–90% on L1 with R1 and R2 disabled & fault",
     37: "Fault 10–49% on L1 with R3 and R4 disabled & fault",
     38: "Fault 50–90% on L1 with R3 and R4 disabled & fault",
 
-    # =========================
-    # RELAY SETTING CHANGE — MAINTENANCE
-    # =========================
     39: "L1 maintenance with R1 and R2 disabled",
     40: "L1 maintenance with R1 and R2 disabled"
 }
@@ -131,14 +99,12 @@ M6_INV_MAP = {i: k for i, k in enumerate(RSC_IDS)}
 from engine.utils import get_top_features
 
 # ============================================================
-# CORE HIERARCHICAL FUNCTION
+# SINGLE ROW PREDICTION (FINAL)
 # ============================================================
 def predict_one(row, feature_cols):
 
-    # Ensure correct format
     X = pd.DataFrame([row], columns=feature_cols)
 
-    # ---------------- M1 ----------------
     p_attack = M1.predict_proba(X)[0][ATTACK_LABEL_IDX]
 
     result = {
@@ -154,53 +120,57 @@ def predict_one(row, feature_cols):
         "Contributing_Factors": None
     }
 
-    # ---------------- M1 ROUTING ----------------
+    # ---------------- NON-ATTACK ----------------
     if p_attack < TAU_GATE:
 
-        m2_probs = M2.predict_proba(X)[0]
-        m2_pred = int(np.argmax(m2_probs))
-        m2_conf = float(m2_probs[m2_pred])
+        probs = M2.predict_proba(X)[0]
+        pred = int(np.argmax(probs))
+        conf = float(probs[pred])
+
+        factors = get_top_features(M2, feature_cols, k=3)
 
         result.update({
             "Final_binary": 0,
-            "Final_label": M2_LABELS[m2_pred],
-            "Final_conf": m2_conf,
+            "Final_label": M2_LABELS[pred],
+            "Final_conf": conf,
             "Decision": "M2_DIRECT",
-            "Path": "M1 → M2"
+            "Path": "M1 → M2",
+            "Contributing_Factors": factors
         })
 
     else:
-
         # ---------------- M3 ----------------
-        m3_probs = M3.predict_proba(X)[0]
-        m3_pred = int(np.argmax(m3_probs))
-        m3_conf = float(m3_probs[m3_pred])
+        probs = M3.predict_proba(X)[0]
+        pred = int(np.argmax(probs))
+        conf = float(probs[pred])
 
-        result["M3_conf"] = m3_conf
+        result["M3_conf"] = conf
 
         # ---------------- FALLBACK ----------------
-        if (m3_conf < CONF_FALLBACK) and (p_attack < TAU_GATE + SAFE_MARGIN):
+        if (conf < CONF_FALLBACK) and (p_attack < TAU_GATE + SAFE_MARGIN):
 
-            m2_probs = M2.predict_proba(X)[0]
-            m2_pred = int(np.argmax(m2_probs))
-            m2_conf = float(m2_probs[m2_pred])
+            probs = M2.predict_proba(X)[0]
+            pred = int(np.argmax(probs))
+            conf = float(probs[pred])
+
+            factors = get_top_features(M2, feature_cols, k=3)
 
             result.update({
                 "Final_binary": 0,
-                "Final_label": M2_LABELS[m2_pred],
-                "Final_conf": m2_conf,
+                "Final_label": M2_LABELS[pred],
+                "Final_conf": conf,
                 "Decision": "FALLBACK_TO_M2",
-                "Path": "M1 → M3 → M2"
+                "Path": "M1 → M3 → M2",
+                "Contributing_Factors": factors
             })
 
         else:
-
             # ---------------- LEAF ----------------
-            if m3_pred == 0:
+            if pred == 0:
                 model = M4
                 inv_map = M4_INV_MAP
                 path = "M1 → M3 → M4"
-            elif m3_pred == 1:
+            elif pred == 1:
                 model = M5
                 inv_map = M5_INV_MAP
                 path = "M1 → M3 → M5"
@@ -210,26 +180,22 @@ def predict_one(row, feature_cols):
                 path = "M1 → M3 → M6"
 
             probs = model.predict_proba(X)[0]
-            pred = int(np.argmax(probs))
-            conf = float(np.max(probs))
+            leaf_pred = int(np.argmax(probs))
+            leaf_conf = float(np.max(probs))
+
+            scenario_id = inv_map[leaf_pred]
+
+            factors = get_top_features(model, feature_cols, k=3)
 
             result.update({
                 "Final_binary": 1,
-                "Final_class": inv_map[pred],
-                "Final_label": SCENARIO_LOOKUP.get(inv_map[pred]),
-                "Final_conf": conf,
-                "Leaf_conf": conf,
+                "Final_class": scenario_id,
+                "Final_label": SCENARIO_LOOKUP.get(scenario_id),
+                "Final_conf": leaf_conf,
+                "Leaf_conf": leaf_conf,
                 "Decision": "ATTACK_CONFIRMED",
-                "Path": path
+                "Path": path,
+                "Contributing_Factors": factors
             })
 
     return result
-
-# ============================================================
-# FULL DATASET RUN
-# ============================================================
-def run_full_inference(X, y_true=None):
-
-    results = hierarchical_predict(X, y_true_marker=y_true)
-
-    return results
