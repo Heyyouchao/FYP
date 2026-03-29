@@ -17,9 +17,12 @@ def get_measurements(row, relay):
 
         frequency = row[f"{relay}:F"]
 
-        pos = abs(row[f"{relay}-PM7:V"])
-        neg = abs(row[f"{relay}-PM8:V"])
-        zero = abs(row[f"{relay}-PM9:V"])
+        # ------------------------------------------------------------
+        # CURRENT SEQUENCE (IMPORTANT FIX)
+        # ------------------------------------------------------------
+        pos = abs(row.get(f"{relay}-PM10:I", 0))
+        neg = abs(row.get(f"{relay}-PM11:I", 0))
+        zero = abs(row.get(f"{relay}-PM12:I", 0))
 
         total = pos + neg + zero
 
