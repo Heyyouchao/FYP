@@ -2,163 +2,184 @@ def load_css():
     return """
     <style>
 
+    .home-card {
+        padding: 30px 25px;
+        border-radius: 14px;
+        border: 1px solid rgba(128,128,128,0.2);
+        background-color: rgba(128,128,128,0.05);
+        text-align: center;
+    }
     /* =========================
        GLOBAL
-    ========================= */
-    body {
-        background-color: #0f172a;
-    }
-
-    /* =========================
-    Title
-    ========================= */
+    ========================== */
     .title {
-        font-size: 28px;
-        font-weight: bold;
-        text-align: center;
-        color: #FFFFFF;
-        margin-bottom: 20px;
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 10px;
     }
 
     /* =========================
-       BANNER
-    ========================= */
-    .banner {
-        padding: 14px;
-        border-radius: 12px;
-        text-align: center;
-        font-size: 18px;
-        font-weight: 600;
+       HEADER BAR
+    ========================== */
+    .header-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        padding: 14px 20px;
         margin-bottom: 12px;
-    }
 
-    .banner-error {
-        background: #7f1d1d;
-        border-left: 6px solid #ef4444;
-    }
-
-    .banner-warning {
-        background: #78350f;
-        border-left: 6px solid #f59e0b;
-    }
-
-    .banner-success {
-        background: #064e3b;
-        border-left: 6px solid #10b981;
-    }
-
-    .banner-info {
-        background: #1e3a8a;
-        border-left: 6px solid #3b82f6;
-    }
-
-    /* =========================
-        BOTTOM CONTROLS (LEFT PANEL)
-    ========================= */
-    .bottom-controls {
-        position: sticky;
-        bottom: 0;
-        background: #0f172a;
-        padding: 12px;
-        border-top: 1px solid #374151;
-        border-radius: 12px 12px 0 0;
-        z-index: 999;
-    }
-
-    /* optional: make buttons full width */
-    .bottom-controls .stButton > button {
-        width: 100%;
-        border-radius: 8px;
-    }
-
-    /* =========================
-    STREAMLIT CARD FIX
-    ========================= */
-
-    /* hidden anchor */
-    .card-anchor {
-        display: none;
-    }
-
-    /* turn Streamlit container INTO a card */
-    div[data-testid="stVerticalBlock"]:has(.card-anchor) {
-        background: #111827;
-        padding: 16px;
         border-radius: 12px;
-        border: 1px solid #374151;
-        margin-bottom: 12px;
+        border: 1px solid rgba(128,128,128,0.2);
+
+        background-color: rgba(128,128,128,0.05);
     }
 
-    /* alert card variant */
-    .alert-anchor {
-        display: none;
-    }
-
-    div[data-testid="stVerticalBlock"]:has(.alert-anchor) {
-        background: #111827;
-        padding: 16px;
-        border-radius: 12px;
-        border: 1px solid #374151;
-        border-left: 4px solid #374151;
-    }
-
-    /* =========================
-       METRICS
-    ========================= */
-    .metric-label {
+    /* LEFT (MODE) */
+    .header-left {
         font-size: 13px;
-        color: #9ca3af;
+        font-weight: 600;
     }
 
-    .metric-value {
-        font-size: 22px;
-        font-weight: bold;
+    .header-left.live {
+        color: #ff4d4d;
+    }
+
+    /* CENTER */
+    .header-center {
+        font-size: 16px;
+        font-weight: 700;
+        text-align: center;
+        flex-grow: 1;
+    }
+
+    /* RIGHT */
+    .header-right {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* STATUS */
+    .status {
+        font-size: 13px;
+        opacity: 0.8;
+    }
+
+    /* =========================
+       🚩 FLAG
+    ========================== */
+    .flag {
+        padding: 4px 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 700;
+
+        background-color: rgba(255, 0, 0, 0.1);
+        color: #ff4d4d;
+        border: 1px solid rgba(255, 0, 0, 0.3);
+    }
+
+    /* =========================
+       🧠 INSIGHT
+    ========================== */
+    .insight {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+    /* ATTACK */
+    .insight.attack {
+        color: #ff4d4d;
+        background: rgba(255, 0, 0, 0.08);
+        border: 1px solid rgba(255, 0, 0, 0.3);
+    }
+
+    /* DISTURBANCE */
+    .insight.disturbance {
+        color: #f59e0b;
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* NORMAL */
+    .insight.normal {
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.08);
+        border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    /* =========================
+       CARDS / PANELS
+    ========================== */
+    .card {
+        border-radius: 12px;
+        padding: 15px;
+        margin-bottom: 10px;
+
+        border: 1px solid rgba(128,128,128,0.15);
+        background-color: rgba(128,128,128,0.04);
+    }
+
+    .card-anchor {
+        margin-bottom: 10px;
+    }
+
+    .left-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* =========================
+       MAIN CONTENT
+    ========================== */
+    .main-content {
+        padding-top: 5px;
     }
 
     /* =========================
        BUTTONS
-    ========================= */
-    .btn {
-        border-radius: 8px;
-        padding: 6px 12px;
-        border: 1px solid #374151;
-        background: #1f2937;
-        color: white;
-        text-align: center;
-        cursor: pointer;
-    }
-
-    .btn:hover {
-        background: #374151;
+    ========================== */
+    button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
     }
 
     /* =========================
-       ALERT CARD (RIGHT PANEL)
-    ========================= */
-    .alert-card {
-        background: #111827;
-        padding: 16px;
-        border-radius: 12px;
-        border: 1px solid #374151;
-    }
-
-    .alert-error {
-        background: #7f1d1d;
-        padding: 8px;
-        border-radius: 8px;
-    }
-
-    .alert-success {
-        background: #064e3b;
-        padding: 8px;
-        border-radius: 8px;
+       METRICS
+    ========================== */
+    div[data-testid="stMetric"] {
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(128,128,128,0.15);
+        background-color: rgba(128,128,128,0.05);
     }
 
     /* =========================
-       FACTORS LIST
-    ========================= */
-    .factor {
-        margin-bottom: 6px;
+       TABLE
+    ========================== */
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    /* =========================
+       SCROLLBAR
+    ========================== */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: rgba(128,128,128,0.3);
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(128,128,128,0.5);
     }
 
     </style>
