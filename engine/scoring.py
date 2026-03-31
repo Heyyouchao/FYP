@@ -1,22 +1,38 @@
 # engine/scoring.py
 
-def compute_fusion_scores(row, relay_disturbance):
+def compute_fusion_scores(row, raw_scores):
 
     scores = {}
 
     for r in ["R1", "R2", "R3", "R4"]:
 
-        physical = relay_disturbance.get(r, 0)
+        physical = raw_scores.get(r, 0)
 
-        relay_log = row.get(f"relay{r[-1]}_log", 0)
+        relay_signal = min(row.get(f"relay{r[-1]}_log", 0), 1)
 
-        cyber = (
+        cyber_signal = min(
             row.get(f"control_panel_log{r[-1]}", 0) +
-            row.get(f"snort_log{r[-1]}", 0)
+            row.get(f"snort_log{r[-1]}", 0),
+            1
         )
 
-        # 🔥 fusion (clean + balanced)
-        scores[r] = physical + relay_log*0.5 + cyber*0.5
+        # -------------------------
+        # FUSION LOGIC
+        # -------------------------
+
+        # 🔴 cyber + relay → strongest
+        if cyber_signal > 0 and relay_signal > 0:
+            score = physical + 0.8
+
+        # 🟡 cyber only
+        elif cyber_signal > 0:
+            score = physical + 0.6
+
+        # 🟢 relay only
+        else:
+            score = physical + 0.2 * relay_signal
+
+        scores[r] = score
 
     return scores
 

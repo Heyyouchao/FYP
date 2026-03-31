@@ -12,13 +12,15 @@ st.caption("Cyber-Physical Intrusion Detection System")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Buttons stacked (simple)
+# =========================
+# MODE BUTTONS (FIXED)
+# =========================
 if st.button("🧪 Debug Mode", use_container_width=True):
     st.session_state.mode = "🧪 Debug Mode"
-    st.switch_page("1_Dashboard")
+    st.switch_page("pages/Dashboard.py")
 
 if st.button("🔴 Live Mode", use_container_width=True):
     st.session_state.mode = "🔴 Live Mode"
-    st.switch_page("1_Dashboard")
+    st.switch_page("pages/Dashboard.py")
 
 st.markdown('</div>', unsafe_allow_html=True)

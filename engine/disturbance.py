@@ -1,66 +1,89 @@
+# ============================================================
+# engine/disturbance.py
+# ============================================================
+
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+import joblib
 
-VALID_SUFFIXES = (":V", ":I", ":VH", ":IH", ":Z", ":ZH", ":F", ":DF")
-pmu_suffixes = [":VH",":IH",":V",":I",":F",":DF"]
+# ============================================================
+# LOAD BASELINE MODEL (ONCE)
+# ============================================================
+model = joblib.load("models/physical_baseline.pkl")
 
-# ------------------------------------------------------------
-# BUILD FEATURE GROUPS
-# ------------------------------------------------------------
-def build_feature_groups(df):
+scaler = model["scaler"]
+relay_groups = model["relay_groups"]
+baseline_mean = model["baseline_mean"]
+baseline_std  = model["baseline_std"]
+green_thr = model["green_thr"]
 
-    relay_groups = {
-        r: [c for c in df.columns if c.startswith(r) and c.endswith(VALID_SUFFIXES)]
-        for r in ["R1","R2","R3","R4"]
-    }
+# 🔥 IMPORTANT: build feature list ONCE
+feature_cols = model["scaler"].feature_names_in_.tolist()
 
-    pmu_cols = [
-        c for c in df.columns
-        if any(c.endswith(s) for s in pmu_suffixes)
-    ]
+# ============================================================
+# COMPUTE RELAY SCORES (WITH SCALING)
+# ============================================================
+def compute_relay_scores(row):
 
-    return relay_groups, pmu_cols
+    # 👉 ensure DataFrame format (for sklearn)
+    if isinstance(row, pd.Series):
+        row_df = row.reindex(feature_cols).to_frame().T
+    else:
+        row_df = row[feature_cols]
 
+    # 👉 apply SAME scaler from baseline
+    row_scaled_vals = scaler.transform(row_df)[0]
+    row_scaled = pd.Series(row_scaled_vals, index=feature_cols)
 
-# ------------------------------------------------------------
-# STANDARDIZE
-# ------------------------------------------------------------
-def standardize(df, relay_groups, pmu_cols):
-
-    scaler = StandardScaler()
-
-    all_cols = sum(relay_groups.values(), []) + pmu_cols
-
-    df_scaled = df.copy()
-    df_scaled[all_cols] = scaler.fit_transform(df[all_cols])
-
-    return df_scaled
-
-
-# ------------------------------------------------------------
-# BASELINE
-# ------------------------------------------------------------
-def compute_baseline(df_scaled, relay_groups, pmu_cols, normal_marker=41):
-
-    relay_mean = df_scaled.groupby("marker")[sum(relay_groups.values(), [])].mean()
-    pmu_mean = df_scaled.groupby("marker")[pmu_cols].mean()
-
-    relay_baseline = relay_mean.loc[normal_marker]
-    pmu_baseline = pmu_mean.loc[normal_marker]
-
-    return relay_baseline, pmu_baseline
-
-
-# ------------------------------------------------------------
-# REAL-TIME DISTURBANCE
-# ------------------------------------------------------------
-def compute_row_disturbance(row, relay_groups, relay_baseline):
-
-    relay_scores = {}
+    scores = {}
 
     for r, cols in relay_groups.items():
-        diff = np.abs(row[cols] - relay_baseline[cols])
-        relay_scores[r] = diff.mean()
 
-    return relay_scores
+        z = (row_scaled[cols] - baseline_mean[cols]) / baseline_std[cols]
+
+        abs_part = np.abs(z)
+        dir_part = np.zeros(len(cols))
+
+        for i, c in enumerate(cols):
+
+            if ":V" in c or ":VH" in c:
+                dir_part[i] = max(-z.iloc[i], 0)
+
+            elif ":I" in c or ":IH" in c:
+                dir_part[i] = max(z.iloc[i], 0)
+
+            elif ":Z" in c or ":ZH" in c:
+                dir_part[i] = max(-z.iloc[i], 0)
+
+            else:
+                dir_part[i] = abs_part.iloc[i]
+
+        adj = abs_part + 0.3 * dir_part
+        scores[r] = float(np.mean(adj))
+
+    return scores
+
+
+# ============================================================
+# CLASSIFICATION
+# ============================================================
+def classify_relay_scores(row):
+
+    scores = compute_relay_scores(row)
+
+    norm_scores = {}
+    state = {}
+
+    for r in scores:
+
+        norm = scores[r] / green_thr[r]
+        norm_scores[r] = norm
+
+        if norm <= 1.0:
+            state[r] = "GREEN"
+        elif norm <= 1.4:
+            state[r] = "YELLOW"
+        else:
+            state[r] = "RED"
+
+    return scores, norm_scores, state

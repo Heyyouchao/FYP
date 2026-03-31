@@ -17,6 +17,11 @@ M5 = joblib.load("models/M5.joblib")
 M6 = joblib.load("models/M6.joblib")
 
 # ============================================================
+# LOAD FEATURE COLUMNS (🔥 IMPORTANT FIX)
+# ============================================================
+FEATURE_COLS = joblib.load("models/feature_columns.pkl")
+
+# ============================================================
 # PARAMETERS
 # ============================================================
 TAU_GATE = 0.5311
@@ -103,7 +108,8 @@ from engine.utils import get_top_features
 # ============================================================
 def predict_one(row, feature_cols):
 
-    X = pd.DataFrame([row], columns=feature_cols)
+    # 🔥 FIXED (correct feature alignment)
+    X = pd.DataFrame([row])[feature_cols]
 
     p_attack = M1.predict_proba(X)[0][ATTACK_LABEL_IDX]
 
@@ -199,3 +205,9 @@ def predict_one(row, feature_cols):
             })
 
     return result
+
+
+# ============================================================
+# EXPORT
+# ============================================================
+__all__ = ["predict_one", "M1", "FEATURE_COLS"]
