@@ -17,7 +17,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # =========================
 if st.button("🧪 Debug Mode", use_container_width=True):
     st.session_state.mode = "🧪 Debug Mode"
-    st.switch_page("pages/Dashboard.py")
+    st.switch_page("pages/dashboard_min.py")
 
 if st.button("🔴 Live Mode", use_container_width=True):
     st.session_state.mode = "🔴 Live Mode"

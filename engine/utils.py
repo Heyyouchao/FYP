@@ -176,6 +176,52 @@ def readable_feature_short(name):
 
     return name
 
+def readable_feature_pop(name):
+
+    relay = name.split("-")[0].split(":")[0]
+
+    # ---------------- Voltage ----------------
+    if "PM1:V" in name:
+        return f"{relay} Phase A (V)"
+    if "PM2:V" in name:
+        return f"{relay} Phase B (V)"
+    if "PM3:V" in name:
+        return f"{relay} Phase C (V)"
+
+    # ---------------- Current ----------------
+    if "PM4:I" in name:
+        return f"{relay} Phase A (I)"
+    if "PM5:I" in name:
+        return f"{relay} Phase B (I)"
+    if "PM6:I" in name:
+        return f"{relay} Phase C (I)"
+
+    # ---------------- Sequence ----------------
+    if "PM10:I" in name:
+        return f"{relay} Positive Seq (I)"
+    if "PM11:I" in name:
+        return f"{relay} Negative Seq (I)"
+    if "PM12:I" in name:
+        return f"{relay} Zero Seq (I)"
+
+    if "PM7:V" in name:
+        return f"{relay} Positive Seq (V)"
+    if "PM8:V" in name:
+        return f"{relay} Negative Seq (V)"
+    if "PM9:V" in name:
+        return f"{relay} Zero Seq (V)"
+    
+    if ":F" in name:
+        return f"{relay} Frequency"
+    if ":DF" in name:
+        return f"{relay} ΔFrequency"
+    
+    if ":Z" in name:
+        return f"{relay} Impedance"
+    if ":ZH" in name:
+        return f"{relay} Impedance (Angle)"     
+    return name
+
 
 # ============================================================
 # 🔥 FEATURE IMPORTANCE (WITH %)

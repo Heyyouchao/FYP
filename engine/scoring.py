@@ -37,8 +37,8 @@ def compute_fusion_scores(row, raw_scores):
     return scores
 
 
-def get_most_affected_relay(row, relay_disturbance):
+def get_most_affected_relay(row, raw_scores):
 
-    scores = compute_fusion_scores(row, relay_disturbance)
+    scores = compute_fusion_scores(row, raw_scores)
 
     return max(scores, key=scores.get), scores
