@@ -264,10 +264,15 @@ def draw_grid(physical_layer, selected=None):
                 badges.append(f"Model inconsistency on {l}")
                 severity = "warning"
 
-    if len(badges) >= 2:
-        badges = ["SYSTEM-WIDE ANOMALY"]
+    # 🔥 severity logic (NO collapsing)
+    if len(badges) == 1:
+        severity = "warning"
+    elif len(badges) >= 2:
         severity = "critical"
 
+    # -------------------------
+    # visual style
+    # -------------------------
     if severity == "critical":
         bg = "#ef4444"
         icon = "🚨"
@@ -278,7 +283,7 @@ def draw_grid(physical_layer, selected=None):
         bg = None
 
     if badges:
-        text = "<br>".join([f"{icon} {b}" for b in badges])
+        text = " | ".join([f"{icon} {b}" for b in badges])
 
         fig.add_annotation(
             x=0.97,
@@ -287,12 +292,12 @@ def draw_grid(physical_layer, selected=None):
             yref="paper",
             text=text,
             showarrow=False,
-            font=dict(size=16, color="white"),
-            align="center",
+            font=dict(size=14, color="white"),
+            align="left",
             bgcolor=bg,
             bordercolor=bg,
             borderwidth=2,
-            borderpad=12
+            borderpad=6
         )
 
     # =========================

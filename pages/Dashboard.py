@@ -78,16 +78,25 @@ defaults = {
     "awaiting_review": False,
     "current_event": None,
     "current_event_id": None,
-    "control_state":{
-        "isolated": set(),
-        "locked": set()
-    },
 }
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
-    st.session_state.started = False
 
+# =========================
+# 🔥 CONTROL STATE INIT (ROBUST)
+# =========================
+if "control_state" not in st.session_state:
+    st.session_state.control_state = {}
+
+if "isolated" not in st.session_state.control_state:
+    st.session_state.control_state["isolated"] = set()
+
+if "locked" not in st.session_state.control_state:
+    st.session_state.control_state["locked"] = set()
+
+if st.session_state.get("closing_modal"):
+    st.session_state.closing_modal = False
 
 # ============================================================
 # HELPERS
@@ -172,29 +181,57 @@ def apply_user_controls(physical_layer):
     line = physical_layer.get("line", {})
     bus = physical_layer.get("bus", {})
 
+    # =========================
+    # RESET BASE STATE
+    # =========================
+    for br in breaker:
+        breaker[br] = "🟢"
+
+    for l in line:
+        line[l] = "🟢"
+
+    for b in bus:
+        bus[b] = "🟢"
+
+    # =========================
+    # APPLY ISOLATION (REALISTIC)
+    # =========================
     for relay in control["isolated"]:
 
         flow = get_relay_flow(relay)
-
         affected_line = flow.get("affects_on")
 
-        # OPEN BREAKERS
+        # 🔌 Trip breaker (simulate protection)
         for br in breaker:
             br_flow = get_breaker_flow(br)
 
             if relay in br_flow.get("affected_by", ""):
-                breaker[br] = "🔴"
+                breaker[br] = "🔴"   # OPEN
 
-        # IMPACT LINE
+        # 🔌 Line disconnected
         if affected_line in line:
-            line[affected_line] = "🔴"
+            line[affected_line] = "⚪"
 
-        # PROPAGATE TO BUS
+        # ⚠ Bus degraded (not dead)
         for b in bus:
             b_flow = get_bus_flow(b)
 
             if affected_line in b_flow.get("affected_by", ""):
                 bus[b] = "🟡"
+
+    # =========================
+    # APPLY LOCK (FAULT PERSISTS)
+    # =========================
+    for relay in control["locked"]:
+
+        flow = get_relay_flow(relay)
+        affected_line = flow.get("affects_on")
+
+        # ❗ DO NOT open breaker
+        # → system stays energized
+
+        if affected_line in line:
+            line[affected_line] = "🔴"  # fault remains
 
     return physical_layer
 
@@ -428,40 +465,6 @@ def get_flagged_relays(row):
 
     return flagged
 
-# # ============================================================
-# # TOP CONTROLS (ONLY BEFORE START)
-# # ============================================================
-# if not st.session_state.started:
-#     st.markdown('<div class="card">', unsafe_allow_html=True)
-
-#     st.subheader("🎮 Controls")
-
-#     c1, c2 = st.columns(2)
-
-#     with c1:
-#         if st.button("▶️ Start Stream", key="top_start"):
-#             st.session_state.running = True
-#             st.session_state.started = True
-#             st.rerun()
-
-#     with c2:
-#         st.button("⏸ Pause Stream", key="top_pause_disabled", disabled=True)
-
-#     st.markdown('</div>', unsafe_allow_html=True)
-
-
-
-# # ============================================================
-# # BEFORE START
-# # ============================================================
-# if not st.session_state.started:
-#     st.markdown("### 💤 System Idle")
-#     st.caption("Waiting for live stream...")
-
-#     st.subheader("📋 Live Event Log")
-#     st.write("No events yet.")
-
-#     st.stop()
 
 
 # =========================
@@ -559,7 +562,7 @@ physical_layer = process_event(
 
 physical_layer = apply_user_controls(physical_layer)
 # ============================================================
-# AUTO CREATE PHYSICAL EVENT (ONLY IF NOT LOCKED)
+# AUTO CREATE PHYSICAL EVENT (FIXED)
 # ============================================================
 if not st.session_state.awaiting_review:
     event = create_event(
@@ -811,7 +814,18 @@ with col_right:
                         norm = norm_scores[selected]
 
                         # 🔥 HEADER
-                        st.markdown(f"### Selected - {selected} {r_data['color']}")
+                        control = st.session_state.control_state
+                        if selected in control["isolated"]:
+                            relay_color = "⚪️"
+                            status = "Isolated"
+                        elif selected in control["locked"]:
+                            relay_color = "🟣"
+                            status = "Locked"
+                        else:
+                            relay_color = r_data["color"]
+                            status = "Normal" if relay_color == "🟢" else "Alert"
+
+                        st.markdown(f"### Selected - {selected} {relay_color}({status})")
 
                         # 🔥 ROW: score + chain
                         flow = get_relay_flow(selected)
@@ -1225,6 +1239,9 @@ with col_right:
 
         # 🔥 unified logging + event tracking
             add_user_action("Isolate", final_relay)
+        
+            st.session_state.actions_clicked = True
+            st.rerun()
 
 
         # 🔒 LOCK
@@ -1233,6 +1250,8 @@ with col_right:
             st.session_state.control_state["locked"].add(final_relay)
 
             add_user_action("Lock", final_relay)
+            st.session_state.actions_clicked = True
+            st.rerun()
 
 
         # 🛠 RESTORE
@@ -1242,59 +1261,8 @@ with col_right:
             st.session_state.control_state["locked"].discard(final_relay)
 
             add_user_action("Restore", final_relay)
-
-        # --- HANDLE ACTIONS ---
-    # if st.session_state.get("action_isolate", False):
-    #     st.session_state.isolated_relays.add(final_relay)
-
-    #     add_log_event(..., action="Isolate")
-
-    #     st.session_state["action_isolate"] = False
-
-
-    # if st.session_state.get("action_lock", False):
-    #     st.session_state.locked_relays.add(final_relay)
-
-    #     add_log_event(..., action="Lock")
-
-    #     st.session_state["action_lock"] = False
-
-
-    # if st.session_state.get("action_restore", False):
-    #     st.session_state.isolated_relays.discard(final_relay)
-    #     st.session_state.locked_relays.discard(final_relay)
-
-    #     add_log_event(..., action="Restore")
-
-    #     st.session_state["action_restore"] = False
-                    
-    # # ============================================================
-    # # AUTO SYSTEM LOG
-    # # ============================================================
-    # system_event = {
-    #     "ID": f"E-{st.session_state.event_counter}",
-    #     "Timestamp": datetime.datetime.now().strftime("%m/%d/%Y, %I:%M:%S %p"),
-    #     "Source": "IDS",
-    #     "Location": final_relay,
-    #     "Model Decision": "Attack" if result["Final_binary"] == 1 else "Normal",
-    #     "Event Type": (
-    #         get_attack_type(result["Final_class"])
-    #         if result["Final_binary"] == 1
-    #         else result["Final_label"]
-    #     ),
-    #     "Decision": result["Decision"],
-    #     "Path": result["Path"],
-    #     "Scenario" : result["Final_class"] if result["Final_binary"] == 1 else "--",
-    #     "Confidence": f"{result['Final_conf']:.0%}",
-    #     "Action": "Investigate" if result["Final_binary"] == 1 else "Log",
-    #     "Original Scenario": scenario if mode == "🧪 Debug Mode" else None
-    # }
-
-    # if st.session_state.running:
-    #     st.session_state.logs.insert(0, system_event)
-    #     st.session_state.event_counter += 1
-    #     st.session_state.logs = st.session_state.logs[:500]
-
+            st.session_state.actions_clicked = True
+            st.rerun()
     # ============================================================
     # 📋 EVENT LOG (FINAL VERSION)
     # ============================================================
@@ -1452,6 +1420,13 @@ with col_right:
 # ============================================================
 @st.dialog("🧾 Event Detail", width="large")
 def show_event_detail(e):
+    st.markdown("""
+    <style>
+    button[aria-label="Close"] {
+        display: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     event_id = e.get("Event ID", "UNKNOWN")
     main_relay = e.get("P", {}).get("Main Relay", "--")
     p_time = e.get("P", {}).get("Timestamp", "--")
@@ -1483,7 +1458,7 @@ def show_event_detail(e):
     # =========================
     st.markdown("### ⏱ Event Flow")
 
-    flow_cols = st.columns(3)
+    flow_cols = st.columns([1.25, 1, 1])
 
     # --- Physical ---
     with flow_cols[0]:
@@ -1521,12 +1496,11 @@ def show_event_detail(e):
             </div>
             """, unsafe_allow_html=True)
 
-    st.divider()
 
     # =========================
     # 📊 MAIN 3-COLUMN VIEW
     # =========================
-    col1, col2, col3 = st.columns([1,1,1])
+    col1, spacer1, col2, spacer2, col3 = st.columns([1.25, 0.08, 1, 0.08, 1])
 
     # =========================
     # ⚡ PHYSICAL COLUMN
@@ -1585,6 +1559,48 @@ def show_event_detail(e):
                 use_container_width=True,
                 hide_index=True
             )
+        else:
+            st.markdown("### 👤 User")
+            st.info("No user actions")
+        # =========================
+        # Action buttons (button)
+        # =========================
+        st.markdown("### ⚡ Operator Actions")
+
+        relay = e.get("P", {}).get("Main Relay", "--")
+
+        if st.button("🔌 Isolate", use_container_width=True):
+            if relay:
+                st.session_state.control_state["isolated"].add(relay)
+                add_user_action("Isolate", relay)
+                st.session_state.actions_clicked = True
+                st.rerun()
+
+        if st.button("🔒 Lock", use_container_width=True):
+            if relay:
+                st.session_state.control_state["locked"].add(relay)
+                add_user_action("Lock", relay)
+                st.session_state.actions_clicked = True
+                st.rerun()
+        if st.button("🛠 Restore", use_container_width=True):
+            if relay:
+                st.session_state.control_state["restored"].add(relay)
+                add_user_action("Restore", relay)
+                st.session_state.actions_clicked = True
+                st.rerun()
+
+        if st.button("🟡 Ack", use_container_width=True):
+            add_user_action("Acknowledge", relay)
+            st.session_state.awaiting_review = False
+            st.session_state.actions_clicked = True
+            st.rerun()
+    
+        if st.button("⛔ Ignore", use_container_width=True):
+            add_user_action("Ignore", relay)
+            st.session_state.awaiting_review = False
+            st.session_state.running = True
+            st.session_state.actions_clicked = True
+            st.rerun()
 
     # =========================
     # ❌ CLOSE BUTTON
@@ -1603,6 +1619,8 @@ def show_event_detail(e):
                     source="IDS",
                     data=e_pending["M"]
                 )
+        # ✅ mark modal as closing FIRST
+        st.session_state.closing_modal = True
 
         # reset state
         st.session_state.pending_action = None
@@ -1624,29 +1642,6 @@ if st.session_state.get("selected_event"):
     show_event_detail(st.session_state.selected_event)
 
 
-# # ============================================================
-# # BOTTOM CONTROL BAR
-# # ============================================================
-# if st.session_state.started:
-#     st.markdown('<div class="bottom-controls">', unsafe_allow_html=True)
-
-#     c1, c2, c3 = st.columns([2, 2, 6])
-
-#     with c1:
-#         if st.button("⏸ Pause", key="bottom_pause"):
-#             st.session_state.running = False
-#             st.rerun()
-
-#     with c2:
-#         if st.session_state.running:
-#             st.success("🟢 Running")
-#         else:
-#             st.warning("🟡 Paused")
-
-#     with c3:
-#         st.write("")
-
-#     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
 # AUTO REFRESH
@@ -1654,6 +1649,7 @@ if st.session_state.get("selected_event"):
 if (
     st.session_state.running
     and not st.session_state.awaiting_review
+    and not st.session_state.get("closing_modal", False)
     and not st.session_state.get("action_clicked", False)
     and st.session_state.get("selected_component") is None
     and st.session_state.get("selected_event") is None  # ✅ ADD THIS

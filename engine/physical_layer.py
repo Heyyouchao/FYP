@@ -107,7 +107,7 @@ def get_breaker_from_relay_log(relay_log):
 
 
 # ------------------------------------------------------------
-# LINE OVERRIDE (REAL SYSTEM BEHAVIOR)
+# LINE OVERRIDE (BREAKER ONLY AFFECTS WHEN OPEN)
 # ------------------------------------------------------------
 def override_line_with_breaker(line_colors, breaker):
 
@@ -116,52 +116,43 @@ def override_line_with_breaker(line_colors, breaker):
     # L1 → BR1 & BR2
     if breaker.get("BR1") == "🔴" or breaker.get("BR2") == "🔴":
         final_line["L1"] = "🔴"
+    else:
+        final_line["L1"] = line_colors["L1"]
 
     # L2 → BR3 & BR4
     if breaker.get("BR3") == "🔴" or breaker.get("BR4") == "🔴":
         final_line["L2"] = "🔴"
+    else:
+        final_line["L2"] = line_colors["L2"]
 
     return final_line
 
+
+# ------------------------------------------------------------
+# ENFORCE SINGLE RED LINE
+# - only applies when BOTH lines are red
+# - breaker is main if open
+# ------------------------------------------------------------
 def enforce_single_red_line_with_breaker(line_scores, line_colors, breaker):
 
-    red_lines = [l for l, c in line_colors.items() if c == "🔴"]
+    # only intervene if BOTH are red
+    if not (line_colors["L1"] == "🔴" and line_colors["L2"] == "🔴"):
+        return line_colors.copy()
 
-    if len(red_lines) <= 1:
-        return line_colors
+    # breaker priority
+    if breaker.get("BR1") == "🔴" or breaker.get("BR2") == "🔴":
+        return {"L1": "🔴", "L2": "🟡"}
 
-    # -------------------------
-    # 🔥 Priority 1: breaker-based line
-    # -------------------------
-    breaker_line = None
+    if breaker.get("BR3") == "🔴" or breaker.get("BR4") == "🔴":
+        return {"L1": "🟡", "L2": "🔴"}
 
-    if breaker["BR1"] == "🔴" or breaker["BR2"] == "🔴":
-        breaker_line = "L1"
-
-    if breaker["BR3"] == "🔴" or breaker["BR4"] == "🔴":
-        # if both sides have breaker → choose stronger later
-        if breaker_line is None:
-            breaker_line = "L2"
-
-    # -------------------------
-    # 🔥 If breaker decides
-    # -------------------------
-    if breaker_line:
-        for l in red_lines:
-            if l != breaker_line:
-                line_colors[l] = "🟡"
-        return line_colors
-
-    # -------------------------
-    # 🔥 Fallback: highest score
-    # -------------------------
+    # fallback → highest relay-score line wins
     max_line = max(line_scores, key=line_scores.get)
 
-    for l in red_lines:
-        if l != max_line:
-            line_colors[l] = "🟡"
-
-    return line_colors
+    return {
+        "L1": "🔴" if max_line == "L1" else "🟡",
+        "L2": "🔴" if max_line == "L2" else "🟡"
+    }
 
 
 # ------------------------------------------------------------
@@ -179,16 +170,14 @@ def get_bus_colors(relay_scores):
 
 
 # ------------------------------------------------------------
-# GENERATOR (FROM BUS)
+# GENERATOR (FOLLOWS FINAL LINE)
 # ------------------------------------------------------------
-def get_generator_colors(bus_scores):
+def get_generator_colors(line_status):
 
-    generator_scores = {
-        "G1": bus_scores.get("B1", 0),
-        "G2": bus_scores.get("B3", 0)
+    return {
+        "G1": line_status["L1"],
+        "G2": line_status["L2"]
     }
-
-    return {g: get_color(s) for g, s in generator_scores.items()}
 
 
 # ------------------------------------------------------------
@@ -199,9 +188,9 @@ def attach_relay_info(physical_layer, top_features, relay_log):
     for r in physical_layer["relay"]:
 
         physical_layer["relay"][r] = {
-            "color": physical_layer["relay"][r],            # model
-            "action": relay_log.get(r, "UNKNOWN"),          # dataset
-            "top_features": top_features.get(r, [])         # explainability
+            "color": physical_layer["relay"][r],
+            "action": relay_log.get(r, "UNKNOWN"),
+            "top_features": top_features.get(r, [])
         }
 
     return physical_layer
@@ -221,42 +210,43 @@ def process_event(relay_scores, row, top_features):
     # 3. BREAKER → execution
     breaker = get_breaker_from_relay_log(relay_log)
 
-    # 4. MODEL → predicted line
+    # 4. MODEL → predicted line (untouched)
     model_line = get_line_colors(relay_scores)
 
-    # 5. REAL → override by breaker
+    # 5. REAL → breaker override
     final_line = override_line_with_breaker(model_line, breaker)
 
-    # 🔥 6. Enforce single dominant line
+    # 6. line scores for tie-break only
     line_scores = {
         "L1": max(relay_scores.get("R1", 0), relay_scores.get("R2", 0)),
         "L2": max(relay_scores.get("R3", 0), relay_scores.get("R4", 0))
     }
 
+    # 7. enforce single red only if both are red
     final_line = enforce_single_red_line_with_breaker(
         line_scores,
         final_line,
         breaker
     )
 
-    # 6. BUS
+    # 8. BUS
     bus, bus_scores = get_bus_colors(relay_scores)
 
-    # 7. GENERATOR
-    generator = get_generator_colors(bus_scores)
+    # 9. GENERATOR follows FINAL line
+    generator = get_generator_colors(final_line)
 
-    # 8. COMBINE
+    # 10. COMBINE
     physical_layer = {
         "relay": relay_colors,
         "breaker": breaker,
         "line": final_line,
-        "line_model": model_line,   # 🔥 important for mismatch
+        "line_model": model_line,   # keep for mismatch checking
         "bus": bus,
         "generator": generator,
-        "relay_log": relay_log      # 🔥 useful later
+        "relay_log": relay_log
     }
 
-    # 9. attach explainability
+    # 11. attach explainability
     physical_layer = attach_relay_info(
         physical_layer,
         top_features,
