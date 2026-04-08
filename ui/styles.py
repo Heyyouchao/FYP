@@ -106,8 +106,13 @@ div[data-testid="stMarkdownContainer"] {
 /* =========================
    TYPOGRAPHY
 ========================= */
-h1, h2 {
-    font-size: 26px !important;
+h1{
+    font-size: 36px !important;
+    font-weight: 700 !important;}
+
+h2 {
+    font-size: 30px !important;
+    font-weight: 700 !important;
 }
 
 h3 {
@@ -128,6 +133,15 @@ div[data-testid="stMarkdownContainer"] p {
 .markdown-text {
     font-size: 18px;
 }
+
+.ids_overlay_text {
+    font-size: 32px !important;
+    font-weight: bold !important;
+    color: #31333F !important;
+    margin-top: 20px !important;  /* 讓這段文字單獨向下移 */
+    display: block;               /* 確保 margin 生效 */
+}
+
 /* =========================
    CARD SYSTEM
 ========================= */
@@ -651,80 +665,6 @@ div[data-testid="stModal"] > div {
     z-index: 0;
 }
 
-/* ========================================
-   🔥 TRUE FULLSCREEN MODAL
-======================================== */
-.overlay-bg {
-    position: centered;
-    inset: 0;
-    background: rgba(2, 6, 23, 0.92);
-    backdrop-filter: blur(6px);
-    z-index: 999999;
-}
-
-/* MAIN MODAL */
-.overlay-box {
-    position: fixed;
-    justify-content: center;
-    align-items: center;
-    width: 100vw;
-    height: 100vh;
-    inset: 0;
-
-    display: flex;
-    flex-direction: column;
-
-    padding: 20px;
-
-    z-index: 1000000;
-}
-
-/* HEADER */
-.overlay-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-
-    padding: 12px 16px;
-    margin-bottom: 10px;
-
-    background: linear-gradient(90deg,#0f172a,#1e293b);
-    border-radius: 10px;
-}
-
-/* 3-COLUMN LAYOUT */
-.overlay-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 16px;
-
-    height: 180px;
-    margin-bottom: 15px;
-}
-
-/* EACH COLUMN */
-.overlay-col {
-    background: rgba(15,23,42,0.7);
-    border-radius: 10px;
-    padding: 12px;
-}
-
-/* COLORS */
-.overlay-col.physical { border-left: 4px solid #3b82f6; }
-.overlay-col.ids { border-left: 4px solid #ef4444; }
-.overlay-col.user { border-left: 4px solid #f59e0b; }
-
-/* SCROLL CONTENT */
-.overlay-content {
-    overflow-y: auto;
-    flex-grow: 1;
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; transform: translate(-50%, -60%); }
-    to { opacity: 1; transform: translate(-50%, -50%); }
-}
-
 
 /* ========================================
    🔥 STREAMLIT DIALOG FULL WIDTH FIX
@@ -738,6 +678,15 @@ div[data-testid="stDialog"] div[role="dialog"] {
     width: 90vw !important;       /* 佔用螢幕 90% 寬度 */
     max-width: 2400px !important;  /* 最大寬度，可根據需求調整 */
     min-width: 1600px !important;   /* 確保不會太窄 */
+
+    height: 85vh !important;        /* 🔥 make it taller */
+    max-height: 100vh !important;
+  
+    background-color: #0b1a2a !important; 
+    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
+
+    margin-top : 90px!important;       /* 從頂部開始稍微往下 */
 }
 
 /* 2. 確保 Dialog 內容區塊自動填滿 */
@@ -747,16 +696,17 @@ div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
 
 /* 3. (選配) 讓表格 (Dataframe) 高度固定避免撐開太長 */
 div[data-testid="stDialog"] .stDataFrame {
-    max-height: 300px;
+    max-height: 400px;
     overflow-y: auto;
 }
 
-/* 4. 修改 Dialog 的背景顏色以符合你的深色主題 */
-div[data-testid="stDialog"] div[role="dialog"] {
-    background-color: #0b1a2a !important; 
-    border: 1px solid rgba(59, 130, 246, 0.3) !important;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
-}
+# /* 4. 修改 Dialog 的背景顏色以符合你的深色主題 */
+# div[data-testid="stDialog"] div[role="dialog"] {
+    
+# }
+div[data-testid="stDialog"] div[role="dialog"] .stMarkdownContainer {
+    text-size: 32px !important;
+}   
 
 
 

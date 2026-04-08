@@ -271,7 +271,7 @@ def build_physical_snapshot(row_clean, raw_scores, norm_scores, physical_layer):
         raw = raw_scores.get(r, 0)
         norm = norm_scores.get(r, 0)
 
-        flag = "⚠️" if row_clean.get(f"{r}-PA:Z_inf_flag", 0) == 1 else ""
+        flag = "⚠️" if row_clean.get(f"{r}-PA:Z_inf_flag", 0) == 1 else "--"
         flow = get_relay_flow(r)
 
         causes = []
@@ -1418,8 +1418,16 @@ with col_right:
 # ============================================================
 # 🧾 EVENT POPUP VIEW (FINAL - 3 COLUMN LAYOUT)
 # ============================================================
-@st.dialog("🧾 Event Detail", width="large")
+@st.dialog(" ", width="large")
 def show_event_detail(e):
+    st.markdown("""
+        <div style='text-align:center; width:100%; margin-top:-15px;'>
+            <span style='font-size:36px; font-weight:700; color:#e2e8f0;'>
+                Event Detail
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+    
     st.markdown("""
     <style>
     button[aria-label="Close"] {
@@ -1427,13 +1435,41 @@ def show_event_detail(e):
     }
     </style>
     """, unsafe_allow_html=True)
+
     event_id = e.get("Event ID", "UNKNOWN")
     main_relay = e.get("P", {}).get("Main Relay", "--")
     p_time = e.get("P", {}).get("Timestamp", "--")
+    m_time = e.get("M", {}).get("Timestamp", "--")
+    u_time = e.get("U", [{}])[-1].get("Timestamp", "--") if e.get("U") else "--"
+
 
     m = e.get("M")
     u_list = e.get("U", [])
     P_full = e.get("P_full", {})
+
+    # =========================
+    # 🧼 TIME EXTRACTION (ROBUST)
+    # =========================
+    def extract_time(ts):
+        if not ts or ts == "--":
+            return "-"
+
+        ts = str(ts)
+
+        # already time only
+        if ":" in ts and ("AM" in ts or "PM" in ts) and len(ts.split()) <= 2:
+            return ts
+
+        # full datetime → take last part
+        parts = ts.split()
+        if len(parts) >= 2:
+            return " ".join(parts[-2:])
+
+        return ts
+
+    p_time_only = extract_time(p_time)
+    ids_time_only = extract_time(m_time)
+    user_time_only = extract_time(u_time)
 
     # =========================
     # 🔝 HEADER
@@ -1446,8 +1482,8 @@ def show_event_detail(e):
         border:1px solid rgba(148,163,184,0.2);
         margin-bottom:10px;
     ">
-        <b style="font-size:18px;">Event ID:</b> {event_id}
-        <span style="float:right;">
+        <b style="font-size:24px;">Event ID:</b> {event_id}
+        <span style="float:right; font-size:24px;">
             ⚡ Relay: <b>{main_relay}</b>
         </span>
     </div>
@@ -1456,45 +1492,20 @@ def show_event_detail(e):
     # =========================
     # ⏱ EVENT FLOW (TOP ROW)
     # =========================
-    st.markdown("### ⏱ Event Flow")
+    st.markdown("## ⏱ Event Flow")
 
-    flow_cols = st.columns([1.25, 1, 1])
+    flow_cols = st.columns([1.25, 0.08, 1, 0.08, 1])
 
-    # --- Physical ---
+    # 🔵 Physical
     with flow_cols[0]:
-        st.markdown(f"""
-        <div style="border-left:4px solid #3b82f6; padding-left:8px;">
-            <b>Physical</b><br>
-            Time: {p_time}<br>
-            Relay: {main_relay}
-        </div>
-        """, unsafe_allow_html=True)
-
-    # --- IDS ---
-    with flow_cols[1]:
-        if m:
-            st.markdown(f"""
-            <div style="border-left:4px solid #ef4444; padding-left:8px;">
-                <b>IDS</b><br>
-                Time: {m.get("Timestamp","--")}<br>
-                {m.get("Event Type","--")}<br>
-                Conf: {m.get("Confidence","--")}
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.info("No IDS decision")
-
-    # --- USER ---
+        st.markdown(f"### ⚡ Physical({p_time_only})")
+    # 🔴 IDS
     with flow_cols[2]:
-        if u_list:
-            last_u = u_list[-1]
-            st.markdown(f"""
-            <div style="border-left:4px solid #f59e0b; padding-left:8px;">
-                <b>User</b><br>
-                {last_u.get("Timestamp","--")}<br>
-                {last_u.get("Action","--")}
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"### 🛡 IDS ({ids_time_only})")
+
+    # 🟡 User
+    with flow_cols[4]:
+        st.markdown(f"### 👤 User ({user_time_only})")
 
 
     # =========================
@@ -1506,44 +1517,58 @@ def show_event_detail(e):
     # ⚡ PHYSICAL COLUMN
     # =========================
     with col1:
-        st.markdown("### ⚡ Physical")
-
         if P_full:
-
             st.markdown("#### Measurements")
+            st.markdown('<div style="max-width:500px;">', unsafe_allow_html=True)
             st.dataframe(
                 pd.DataFrame(P_full.get("Measurements", [])),
                 use_container_width=True,
                 hide_index=True
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown("#### Relay Analysis")
+            st.markdown('<div style="max-width:700px;">', unsafe_allow_html=True)
             st.dataframe(
                 pd.DataFrame(P_full.get("Relay Analysis", [])),
                 use_container_width=True,
                 hide_index=True
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
             st.markdown("#### System State")
+            st.markdown('<div style="max-width:600px;">', unsafe_allow_html=True)
             st.dataframe(
                 pd.DataFrame(P_full.get("System State", [])),
                 use_container_width=True,
                 hide_index=True
             )
+            st.markdown('</div>', unsafe_allow_html=True)
 
         else:
             st.info("No physical data")
-
     # =========================
     # 🛡 IDS COLUMN
     # =========================
     with col2:
-        st.markdown("### 🛡 IDS")
-
+        st.markdown(" ")
+        st.markdown(" ")
         if m:
             for key, value in m.items():
-                # 自動將鍵名首字母大寫，並以加粗顯示
-                st.write(f"**{key.capitalize()}** : {value}")
+                # 設定 32px 為大字體，也可以根據需求調整
+                # 在程式開頭注入 CSS
+                # 使用 <div> 或 <span> 並加上 id="ids_overlay_text
+                st.markdown(f"""
+                <div style="
+                    font-size:24px;
+                    font-weight:bold;
+                    color:#ffffff;
+                    text-shadow: 0 0 10px rgba(239,68,68,0.7);
+                    margin-bottom:20px;
+                ">
+                    {key}: {value}
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.warning("Awaiting IDS decision")
 
@@ -1551,16 +1576,15 @@ def show_event_detail(e):
     # 👤 USER COLUMN (ONLY IF EXISTS)
     # =========================
     with col3:
+        st.markdown(" ")
+        st.markdown(" ")
         if u_list:
-            st.markdown("### 👤 User")
-
             st.dataframe(
                 pd.DataFrame(u_list),
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.markdown("### 👤 User")
             st.info("No user actions")
         # =========================
         # Action buttons (button)
@@ -1582,6 +1606,7 @@ def show_event_detail(e):
                 add_user_action("Lock", relay)
                 st.session_state.actions_clicked = True
                 st.rerun()
+
         if st.button("🛠 Restore", use_container_width=True):
             if relay:
                 st.session_state.control_state["restored"].add(relay)
@@ -1593,7 +1618,6 @@ def show_event_detail(e):
             add_user_action("Acknowledge", relay)
             st.session_state.awaiting_review = False
             st.session_state.actions_clicked = True
-            st.rerun()
     
         if st.button("⛔ Ignore", use_container_width=True):
             add_user_action("Ignore", relay)
@@ -1605,8 +1629,7 @@ def show_event_detail(e):
     # =========================
     # ❌ CLOSE BUTTON
     # =========================
-    st.divider()
-
+    st.markdown(" ")
     if st.button("Close", use_container_width=True):
 
         # 🔥 HANDLE INVESTIGATE DELAYED LOGGING
