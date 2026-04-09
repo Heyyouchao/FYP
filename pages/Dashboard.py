@@ -59,7 +59,7 @@ df_debug, df_live_raw = load_data()
 # ============================================================
 # MODE
 # ============================================================
-mode = st.session_state.get("mode", "🧪 Debug Mode")
+mode = st.session_state.get("mode", "Debug Mode")
 
 # ============================================================
 # SESSION STATE (SAFE INIT)
@@ -117,6 +117,9 @@ def system_frozen():
         st.session_state.get("selected_event") is not None
         or st.session_state.get("awaiting_review", False)
     )
+def modal_just_closed():
+    t = st.session_state.get("modal_closed_time", 0)
+    return time.time() - t < 2
 
 def get_active_event():
     return st.session_state.get("current_event")
@@ -367,7 +370,7 @@ if "current_idx" not in st.session_state:
 # =========================
 # DATA PIPELINE
 # =========================
-if mode == "🧪 Debug Mode":
+if mode == "Debug Mode":
 
     # fallback scenario
     if scenario is None:
@@ -392,7 +395,7 @@ if mode == "🧪 Debug Mode":
 
 
 # ============================================================
-# 🔴 LIVE MODE (REAL RANDOM STREAM)
+# LIVE MODE (REAL RANDOM STREAM)
 # ============================================================
 else:
 
@@ -475,7 +478,7 @@ else:
 # AUTO CREATE PHYSICAL EVENT (FIXED)
 # ============================================================
 if system_started:
-    if not system_frozen():
+    if not system_frozen() and not modal_just_closed():
         event = create_event(
             row_clean,
             raw_scores,
@@ -513,7 +516,7 @@ with col_left:
     with st.container():
         st.markdown('<div class="card-anchor "></div>', unsafe_allow_html=True)
         # TOP CONTENT
-        st.subheader("🔀 Relay Selection")
+        st.subheader("Relay Selection")
 
         # buttons...
         b0, b1, b2, b3, b4 = st.columns(5)
@@ -544,7 +547,7 @@ with col_left:
     with st.container():
         st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
-        st.subheader(f"⚙️ Measurements — {selected_relay}")
+        st.subheader(f"Measurements — {selected_relay}")
 
         if not system_started:
             st.info("Waiting to start ...")
@@ -604,7 +607,7 @@ with col_left:
         # 🔥 FIX: DISABLE WHEN SYSTEM FROZEN
         disabled_controls = system_frozen()
 
-        if st.button("▶️ Start", use_container_width=True):
+        if st.button("▶ Start", use_container_width=True):
             st.session_state.running = True
             st.session_state.started = True
             st.rerun()
@@ -622,7 +625,7 @@ with col_right:
         with st.container():
             st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
-            st.subheader("⚡ System State & Context")
+            st.subheader("System State & Context")
             
             col_grid, col_table = st.columns([2, 1]) # grid bigger
 
@@ -668,7 +671,7 @@ with col_right:
         # =========================
             with col_table:
                 st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
-                st.subheader("🖥️ Control Room")
+                st.subheader("Control Room")
 
                 def status_icon(status):
                     if "Active" in status or "Connected" in status:
@@ -682,18 +685,20 @@ with col_right:
                 
                 if not system_started:
                     components = [
-                        ("🔌 Switch", "Idle", "--"),
-                        ("📡 PDC", "Idle", "--"),
-                        ("🛡 IDS", "Waiting", "--"),
-                        ("📝 Syslog", "Stopped", "--")
+                        ("Switch", "Idle", "--"),
+                        ("PDC", "Idle", "--"),
+                        ("IDS", "Waiting", "--"),
+                        ("Syslog", "Stopped", "--")
                     ]
                 else:
                     components = [
-                        ("🔌 Switch", "Active", final_relay),
-                        ("📡 PDC", "Connected", selected_relay),
-                        ("🛡 IDS", "Alert" if result["Final_binary"] == 1 else "Monitoring", "--"),
-                        ("📝 Syslog", "Logging", "Event Log")
+                        ("Switch", "Active", final_relay),
+                        ("PDC", "Connected", selected_relay),
+                        ("IDS", "Alert" if result["Final_binary"] == 1 else "Monitoring", "--"),
+                        ("Syslog", "Logging", "Event Log")
                     ]
+                
+                st.markdown('<div class="control-grid">', unsafe_allow_html=True)
 
                 for name, status, signal in components:
 
@@ -704,6 +709,7 @@ with col_right:
                         <div class="control-right">{signal}</div>
                     </div>
                     """, unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
 
 
                 selected = st.session_state.get("selected_component")
@@ -758,7 +764,7 @@ with col_right:
 
                         st.markdown(f"### Selected - {selected} {relay_color}({status})")
 
-                        # 🔥 ROW: score + chain
+                        # ROW: score + chain
                         flow = get_relay_flow(selected)
 
                         c1, c2 = st.columns([1.5, 1])
@@ -915,7 +921,7 @@ with col_right:
 
             with st.container():
                 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
-                st.subheader("📊 Live PMU Waveforms")
+                st.subheader("Live PMU Waveforms")
 
                 if not system_started:
                     st.info("Waiting to start...")
@@ -1004,7 +1010,7 @@ with col_right:
                 )
             current_time = datetime.datetime.now().strftime("%I:%M %p")
 
-            if result["Final_binary"] == 1 or st.session_state.awaiting_review:
+            if result["Final_binary"] == 1 or st.session_state.awaiting_review and not modal_just_closed():
 
                 if not st.session_state.awaiting_review and st.session_state.current_event:
                     st.session_state.awaiting_review = True
@@ -1247,7 +1253,7 @@ with col_right:
     ]
 
     # 🔥 REMOVE in LIVE MODE
-    if mode != "🧪 Debug Mode":
+    if mode != "Debug Mode":
         display_columns = [c for c in headers if c != "Original Scenario"]
     else:
         display_columns = headers
@@ -1260,17 +1266,17 @@ with col_right:
     # =========================
     column_widths = {
         "Event ID": 1,
-        "Timestamp": 1.5,
+        "Timestamp": 1.1,
         "Source": 1,
-        "Location": 1,
+        "Location": 0.9,
         "Event Type": 2,
         "Decision": 1.5,
         "Confidence": 1,
-        "Path": 1,
+        "Path": 1.2,
         "Scenario": 1,
-        "Original Scenario": 1,
-        "Action": 1.5,
-        "View": 0.8
+        "Original Scenario": 1.5,
+        "Action": 1,
+        "View": 1
     }
 
     widths = [column_widths[c] for c in display_columns_with_view]
@@ -1282,7 +1288,16 @@ with col_right:
 
     for i, h in enumerate(display_columns_with_view):
         with cols[i]:
-            st.markdown(f"**{h}**")
+             st.markdown(f"""
+            <div style="
+                padding-left:20px;   /* 8px + 3px border alignment */
+                font-size:16px;
+                color:#ffffff;
+                font-weight:600;
+            ">
+                {h}
+            </div>
+            """, unsafe_allow_html=True)
 
     
     # 🔥 OPEN SCROLL CONTAINER HERE
@@ -1304,7 +1319,6 @@ with col_right:
                 cols = st.columns(widths)
 
                 for i, key in enumerate(display_columns_with_view):
-
                     with cols[i]:
 
                         # 🔍 VIEW BUTTON

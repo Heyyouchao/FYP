@@ -13,12 +13,12 @@ def render_header(mode, running, df_debug, result=None):
 
         with col1:
 
-            if mode == "🧪 Debug Mode":
+            if mode == "Debug Mode":
 
                 col_mode, col_scenario = st.columns([1, 2])
 
                 with col_mode:
-                    st.markdown("🧪 **DEBUG**")
+                    st.markdown(" **DEBUG**")
 
                 with col_scenario:
                     scenario = st.selectbox(

@@ -115,7 +115,7 @@ def build_M(result, final_relay, scenario, mode, action):
         "Confidence": f"{result['Final_conf']:.0%}",
         "Path": result["Path"],
         "Scenario": result["Final_class"] if result["Final_binary"] == 1 else "--",
-        "Original Scenario": scenario if mode == "🧪 Debug Mode" else "--",
+        "Original Scenario": scenario if mode == "Debug Mode" else "--",
         "Action": action
     }
 

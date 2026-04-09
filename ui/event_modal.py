@@ -2,7 +2,7 @@
 
 import streamlit as st
 import pandas as pd
-
+import time
 from helpers.event_helpers import add_log_row, add_user_action
 
 
@@ -249,5 +249,6 @@ def show_event_detail(e):
         st.session_state.modal_mode = None
         st.session_state.selected_event = None
         st.session_state.actions_clicked = False
+        st.session_state.modal_closed_time = time.time()
 
         st.rerun()

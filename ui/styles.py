@@ -10,6 +10,66 @@ body {
     color: #e5e7eb;
 }
 
+/* ========================================
+   🔥 PAGE → DIALOG STYLE CONTAINER
+======================================== */
+
+/* ========================================
+   MODE BOX (KEEP YOUR COLOUR SYSTEM)
+======================================== */
+
+.mode-box {
+    margin: 60px auto;
+    width: 50%;
+
+    padding: 20px;
+    border-radius: 12px;
+
+    background: #0f172a;
+    border: 1px solid #e2e8f0;
+
+    margin-bottom: 16px;
+
+    transition: all 0.25s ease;
+    cursor: pointer;
+}
+
+/* DEBUG (BLUE SYSTEM) */
+.mode-box:not(.live):hover {
+    border-color: rgba(59,130,246,0.7);
+    box-shadow: 0 0 20px rgba(59,130,246,0.25);
+    transform: translateY(-3px);
+}
+
+/* LIVE (RED SYSTEM) */
+.mode-box.live {
+    border: 1px solid rgba(239,68,68,0.4);
+}
+
+.mode-box.live:hover {
+    border-color: rgba(239,68,68,0.8);
+    box-shadow: 0 0 20px rgba(239,68,68,0.25);
+    transform: translateY(-3px);
+}
+
+/* ========================================
+   TEXT
+======================================== */
+
+.mode-title {
+    font-size: 20px;
+    font-weight: 700;
+    color: #ffffff;
+    text-align: center;
+}
+
+.mode-desc {
+    font-size: 14px;
+    color: #ffffff;
+    margin-top: 6px;
+    text-align: center;
+}
+
 /* =========================
    HEADER
 ========================= */
@@ -214,7 +274,7 @@ div[data-testid="stVerticalBlock"]:has(.alert-anchor) {
 
 /* LEFT TITLE */
 .ids-title {
-    font-size: 20px;
+    font-size: 26px;
     font-weight: 700;
     color: #e5e7eb;
 }
@@ -333,6 +393,13 @@ div[data-testid="stVerticalBlock"]:has(.alert-anchor) {
 /* =========================
    CONTROL ROOM ROWS
 ========================= */
+
+.control-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Two equal columns */
+    gap: 10px; /* Space between the items */
+    width: 100%;
+}
 
 .control-row {
     display: flex;
