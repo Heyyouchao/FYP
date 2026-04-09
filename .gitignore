@@ -1,12 +1,29 @@
-# Ignore environment
+# =========================
+# 🐍 Python Environment
+# =========================
 myenv/
+venv/
+.env/
 
-# Ignore Jupyter checkpoints
-.ipynb_checkpoints/
-
-# Ignore macOS system files
-.DS_Store
-
-# Python cache
+# =========================
+# 🧠 Cache / Compiled
+# =========================
 __pycache__/
 *.pyc
+
+# =========================
+# 📓 Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# 🧪 Debug / Temp / Output
+# =========================
+debug/
+output/
+*.log
+
+# =========================
+# 🍎 macOS
+# =========================
+.DS_Store
