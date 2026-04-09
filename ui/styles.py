@@ -568,8 +568,8 @@ div[data-testid="stMetricValue"] {
     background: #1f2937;
     border: 1px solid #374151;
     color: #e5e7eb;
-    font-weight: 600;
-    font-size: 19px;
+    font-weight: 700;
+    font-size: 24px;
     padding: 6px 8px;
 }
 

@@ -14,6 +14,7 @@ st.set_page_config(layout="wide")
 # ============================================================
 from ui.styles import load_css
 from ui.header import render_header
+from ui.event_modal import show_event_detail
 from streamlit_plotly_events import plotly_events
 
 st.markdown(load_css(), unsafe_allow_html=True)
@@ -38,6 +39,7 @@ from engine.explainer import(
     get_cyber_logs
 )
 from ui.grid_diagram import draw_grid
+from helpers.event_helpers import add_log_row, get_current_event, add_user_action, now_full, create_event, build_M
 
 # ============================================================
 # LOAD DATA (SAFE)
@@ -83,6 +85,12 @@ for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
+if "last_idx" not in st.session_state:
+    st.session_state.last_idx = -1
+
+system_started = st.session_state.get("started", False)
+system_running = st.session_state.get("running", False)
+
 # =========================
 # 🔥 CONTROL STATE INIT (ROBUST)
 # =========================
@@ -95,8 +103,23 @@ if "isolated" not in st.session_state.control_state:
 if "locked" not in st.session_state.control_state:
     st.session_state.control_state["locked"] = set()
 
+if "control_target" not in st.session_state:
+    st.session_state.control_target = None
+
 if st.session_state.get("closing_modal"):
     st.session_state.closing_modal = False
+
+# ============================================================
+# 🔒 SYSTEM FREEZE (CRITICAL FIX)
+# ============================================================
+def system_frozen():
+    return (
+        st.session_state.get("selected_event") is not None
+        or st.session_state.get("awaiting_review", False)
+    )
+
+def get_active_event():
+    return st.session_state.get("current_event")
 
 # ============================================================
 # HELPERS
@@ -122,119 +145,71 @@ def metric_row(label, value, unit="", level=None):
     </div>
     """, unsafe_allow_html=True)
 
-# ============================================================
-# TIME HELPER
-# ============================================================
-def now():
-    return datetime.datetime.now().strftime("%I:%M:%S %p")
-
-def now_full():
-    return datetime.datetime.now().strftime("%m/%d/%Y, %I:%M:%S %p")
-
-# ============================================================
-# CURRENT EVENT (SAFE)
-# ============================================================
-def get_current_event():
-    return st.session_state.get("current_event", None)
-
-# ============================================================
-# USER ACTION → COUNTERMEASURE (U LAYER)
-# ============================================================
-def add_user_action(action, final_relay):
-    event = get_current_event()
-
-    if not event:
-        return
-
-    # =========================
-    # STORE IN EVENT (U)
-    # =========================
-    event["U"].append({
-        "Timestamp": now(),
-        "Action": action,
-        "Location": final_relay
-    })
-
-    # =========================
-    # LOG AS COUNTERMEASURE
-    # =========================
-    add_log_row(
-        event["Event ID"],
-        "User",
-        {
-            "Location": final_relay,
-            "Model Decision": "Manual",
-            "Event Type": "Countermeasure",   # 🔥 UPDATED
-            "Decision": action,
-            "Confidence": "--",
-            "Path": "Grid",
-            "Scenario": "--",
-            "Original Scenario": "--",
-            "Action": action
-        }
-    )
-
 def apply_user_controls(physical_layer):
-    control = st.session_state.control_state
+    current_event = st.session_state.get("current_event")
 
+    # no active event or no actions -> return physical model as-is
+    if not current_event or "actions" not in current_event:
+        return physical_layer
+
+    control = current_event["actions"]
+
+    relay_state = physical_layer.get("relay", {})
     breaker = physical_layer.get("breaker", {})
     line = physical_layer.get("line", {})
     bus = physical_layer.get("bus", {})
 
-    # =========================
-    # RESET BASE STATE
-    # =========================
-    for br in breaker:
-        breaker[br] = "🟢"
+    # ============================================================
+    # APPLY OVERRIDES ONLY
+    # physical_layer already contains the base physical state
+    # so we only override when user actions exist
+    # ============================================================
 
-    for l in line:
-        line[l] = "🟢"
-
-    for b in bus:
-        bus[b] = "🟢"
-
-    # =========================
-    # APPLY ISOLATION (REALISTIC)
-    # =========================
-    for relay in control["isolated"]:
+    # -------------------------
+    # ISOLATE
+    # -------------------------
+    for relay in control.get("isolated", set()):
 
         flow = get_relay_flow(relay)
         affected_line = flow.get("affects_on")
 
-        # 🔌 Trip breaker (simulate protection)
+        # relay degraded
+        if relay in relay_state:
+            relay_state[relay]["color"] = "🟡"
+
+        # trip breaker
         for br in breaker:
             br_flow = get_breaker_flow(br)
-
             if relay in br_flow.get("affected_by", ""):
-                breaker[br] = "🔴"   # OPEN
+                breaker[br] = "🔴"
 
-        # 🔌 Line disconnected
+        # disconnect line
         if affected_line in line:
             line[affected_line] = "⚪"
 
-        # ⚠ Bus degraded (not dead)
+        # degrade bus
         for b in bus:
             b_flow = get_bus_flow(b)
-
             if affected_line in b_flow.get("affected_by", ""):
                 bus[b] = "🟡"
 
-    # =========================
-    # APPLY LOCK (FAULT PERSISTS)
-    # =========================
-    for relay in control["locked"]:
+    # -------------------------
+    # LOCK
+    # -------------------------
+    for relay in control.get("locked", set()):
 
         flow = get_relay_flow(relay)
         affected_line = flow.get("affects_on")
 
-        # ❗ DO NOT open breaker
-        # → system stays energized
+        # relay fault persists
+        if relay in relay_state:
+            relay_state[relay]["color"] = "🔴"
 
+        # line fault persists
         if affected_line in line:
-            line[affected_line] = "🔴"  # fault remains
+            line[affected_line] = "🔴"
 
     return physical_layer
-
 
 # ============================================================
 # PHYSICAL SNAPSHOT (P_full)
@@ -357,100 +332,6 @@ def build_physical_snapshot(row_clean, raw_scores, norm_scores, physical_layer):
     }
 
 
-# ============================================================
-# CREATE EVENT (P LAYER)
-# ============================================================
-def create_event(row_clean, raw_scores, norm_scores, physical_layer, final_relay):
-
-    event_id = f"E-{st.session_state.event_counter}"
-    st.session_state.event_counter += 1
-
-    physical_snapshot = build_physical_snapshot(
-        row_clean,
-        raw_scores,
-        norm_scores,
-        physical_layer
-    )
-
-    event = {
-        "Event ID": event_id,
-        "P": {
-            "Timestamp": now(),
-            "Main Relay": final_relay,
-        },
-        "P_full": physical_snapshot,
-        "M": None,
-        "U": []
-    }
-
-    st.session_state.logs.insert(0, event)
-    st.session_state.logs = st.session_state.logs[:500]
-
-    st.session_state.current_event = event
-    st.session_state.current_event_id = event_id
-
-    # ✅ PHYSICAL LOG
-    add_log_row(
-        event_id,
-        "Physical",
-        {
-            "Location": final_relay,
-            "Event Type": "Physical Disturbance",
-            "Action": "Auto Detected"
-        }
-    )
-
-    return event
-
-
-# ============================================================
-# IDS LAYER (M)
-# ============================================================
-def build_M(result, final_relay, scenario, mode, action):
-
-    return {
-        "Timestamp": now_full(),
-        "Source": "IDS",
-        "Location": final_relay,
-        "Model Decision": "Attack" if result["Final_binary"] == 1 else "Normal",
-        "Event Type": (
-            get_attack_type(result["Final_class"])
-            if result["Final_binary"] == 1
-            else result["Final_label"]
-        ),
-        "Decision": result["Decision"],
-        "Confidence": f"{result['Final_conf']:.0%}",
-        "Path": result["Path"],
-        "Scenario": result["Final_class"] if result["Final_binary"] == 1 else "--",
-        "Original Scenario": scenario if mode == "🧪 Debug Mode" else "--",
-        "Action": action
-    }
-
-
-# ============================================================
-# LOG TABLE
-# ============================================================
-def add_log_row(event_id, source, data):
-
-    row = {
-        "Event ID": event_id,
-        "Timestamp": now(),   # 🔥 SHORT TIME FORMAT
-        "Source": source,
-        "Location": data.get("Location", "--"),
-        "Model Decision": data.get("Model Decision", "--"),
-        "Event Type": data.get("Event Type", "--"),
-        "Decision": data.get("Decision", "--"),
-        "Confidence": data.get("Confidence", "--"),
-        "Path": data.get("Path", "--"),
-        "Scenario": data.get("Scenario", "--"),
-        "Original Scenario": data.get("Original Scenario", "--"),
-        "Action": data.get("Action", "--"),
-    }
-
-    st.session_state.log_rows.insert(0, row)
-
-    st.session_state.log_rows = st.session_state.log_rows[:500]
-
 
 # ============================================================
 # FLAGGED RELAYS
@@ -497,7 +378,7 @@ if mode == "🧪 Debug Mode":
     # -------------------------
     # STREAM (SEQUENTIAL)
     # -------------------------
-    if st.session_state.running:
+    if st.session_state.running and not system_frozen():
         st.session_state.current_idx += 1
         if st.session_state.current_idx >= len(df_active):
             st.session_state.current_idx = 0
@@ -520,7 +401,10 @@ else:
     # -------------------------
     # RANDOM INDEX (REAL LIVE)
     # -------------------------
-    idx = np.random.randint(0, len(df_active))
+    if not system_frozen():
+        idx = np.random.randint(0, len(df_active))
+    else:
+        idx = st.session_state.get("current_idx", 0)
 
     row_raw = df_active.iloc[idx].copy()
 
@@ -530,50 +414,81 @@ else:
     # optional debug display
     st.caption(f"Live sample from scenario: {row_raw['marker']}")
 
-# ============================================================
-# 1. PHYSICAL MODEL
-# ============================================================
-raw_scores, norm_scores, state, top_features = classify_relay_scores(row_clean)
+if not system_started:
+    final_relay ="--"
+    physical_relay = "--"
+    raw_scores = {f"R{i}": 0 for i in range(1,5)}
+    norm_scores = {f"R{i}": 0 for i in range(1,5)}
+    top_features = {}
+    result = {
+        "Final_binary": 0,
+        "Final_conf": 0,
+        "Final_label": "Waiting to start",
+        "Final_class": "--",
+        "Path": "--",
+        "Decision": "--",
+        "Contributing_Factors": []
+    }
 
-physical_relay = max(raw_scores, key=raw_scores.get)
+else:
+    # ============================================================
+    # 1. PHYSICAL MODEL
+    # ============================================================
+    raw_scores, norm_scores, state, top_features = classify_relay_scores(row_clean)
 
-# ============================================================
-# 2. ML PREDICT
-# ============================================================
-row_model = get_model_input(row_clean, FEATURE_COLS)
-result = predict_one(row_model, FEATURE_COLS)
+    physical_relay = max(raw_scores, key=raw_scores.get)
 
-# ============================================================
-# 3. FUSION
-# ============================================================
-final_relay, scores = get_most_affected_relay(
-    row_clean,
-    raw_scores
-)
+    # ============================================================
+    # 2. ML PREDICT
+    # ============================================================
+    row_model = get_model_input(row_clean, FEATURE_COLS)
+    result = predict_one(row_model, FEATURE_COLS)
+
+    # ============================================================
+    # 3. FUSION
+    # ============================================================
+    final_relay, scores = get_most_affected_relay(
+        row_clean,
+        raw_scores
+    )
 
 # ============================================================
 # 4. GRID
 # ============================================================
-physical_layer = process_event(
-    norm_scores,
-    row_clean,        # or your current row
-    top_features
-)
+if system_started:
+    physical_layer = process_event(
+        norm_scores,
+        row_clean,        # or your current row
+        top_features
+    )
 
-physical_layer = apply_user_controls(physical_layer)
+    physical_layer = apply_user_controls(physical_layer)
+else:
+    physical_layer = {
+        "relay": {f"R{i}": {"color": "🟢"} for i in range(1,5)},
+        "breaker": {f"BR{i}": "🟢" for i in range(1,5)},
+        "line": {f"L{i}": "🟢" for i in range(1,3)},
+        "bus": {f"B{i}": "🟢" for i in range(1,4)},
+        "generator": {f"G{i}": "🟢" for i in range(1,3)},
+    }
 # ============================================================
 # AUTO CREATE PHYSICAL EVENT (FIXED)
 # ============================================================
-if not st.session_state.awaiting_review:
-    event = create_event(
-        row_clean,
-        raw_scores,
-        norm_scores,
-        physical_layer,
-        final_relay
-    )
+if system_started:
+    if not system_frozen():
+        event = create_event(
+            row_clean,
+            raw_scores,
+            norm_scores,
+            physical_layer,
+            final_relay,
+            build_physical_snapshot
+        )
 
-    st.session_state.current_event_id = event["Event ID"]
+        # ✅ ONLY SET CURRENT EVENT IF NONE ACTIVE
+        if st.session_state.current_event is None:
+            st.session_state.current_event = event
+            st.session_state.current_event_id = event["Event ID"]
 
 # ============================================================
 # RELAY SELECTION
@@ -595,7 +510,6 @@ col_left, col_right = st.columns([1, 4])
 # LEFT PANEL
 # ============================================================
 with col_left:
-
     with st.container():
         st.markdown('<div class="card-anchor "></div>', unsafe_allow_html=True)
         # TOP CONTENT
@@ -631,63 +545,73 @@ with col_left:
         st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
         st.subheader(f"⚙️ Measurements — {selected_relay}")
-        # metrics...
-        data = get_measurements(row_clean, current_display_relay)
 
-        if "error" in data:
-            st.error(f"Measurement error: {data['error']}")
+        if not system_started:
+            st.info("Waiting to start ...")
         else:
-            st.metric("Voltage", f"{data['voltage']:.1f} kV")
-            st.metric("Current", f"{data['current']:.1f} A")
-            st.metric("Frequency", f"{data['frequency']:.2f} Hz")
+            # metrics...
+            data = get_measurements(row_clean, current_display_relay)
 
-            st.subheader("🔋 Sequence")
-            metric_row("Positive", f"{data['pos']:.1f}%", level="normal")
-
-            neg_level="alert" if data["neg"] > 5 else None
-            metric_row("Negative", f"{data['neg']:.1f}%", level=neg_level)
-
-            metric_row("Zero", f"{data['zero']:.1f}%", level="normal")
-
-            st.subheader("⚡ Relay Insight")
-            metric_row("Physical Relay", physical_relay)
-            metric_row("Final Relay", final_relay)
-            dist = raw_scores[current_display_relay]
-
-            dist_level = "alert" if dist > 1.5 else "warning" if dist > 1.0 else None
-            metric_row("Disturbance", f"{raw_scores[current_display_relay]:.2f}", level=dist_level)
-
-
-            if data.get("impedance_flag", 0) == 1:
-                st.markdown(
-                    f"""
-                    <div class="impedance-error-bar">
-                        <div class="impedance-error-bar-left">
-                            ⚠️ Impedance anomaly detected
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+            if "error" in data:
+                st.error(f"Measurement error: {data['error']}")
             else:
-                st.markdown(
-                    f"""
-                    <div class="impedance-normal-bar">
-                        <div class="impedance-normal-bar-left">
-                            ✅ Impedance normal
+                st.metric("Voltage", f"{data['voltage']:.1f} kV")
+                st.metric("Current", f"{data['current']:.1f} A")
+                st.metric("Frequency", f"{data['frequency']:.2f} Hz")
+
+                st.subheader("🔋 Sequence")
+                metric_row("Positive", f"{data['pos']:.1f}%", level="normal")
+
+                neg_level="alert" if data["neg"] > 5 else None
+                metric_row("Negative", f"{data['neg']:.1f}%", level=neg_level)
+
+                metric_row("Zero", f"{data['zero']:.1f}%", level="normal")
+
+                st.subheader("⚡ Relay Insight")
+                metric_row("Physical Relay", physical_relay)
+                metric_row("Final Relay", final_relay)
+                dist = raw_scores[current_display_relay]
+
+                dist_level = "alert" if dist > 1.5 else "warning" if dist > 1.0 else None
+                metric_row("Disturbance", f"{raw_scores[current_display_relay]:.2f}", level=dist_level)
+
+
+                if data.get("impedance_flag", 0) == 1:
+                    st.markdown(
+                        f"""
+                        <div class="impedance-error-bar">
+                            <div class="impedance-error-bar-left">
+                                ⚠️ Impedance anomaly detected
+                            </div>
                         </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                        """,
+                        unsafe_allow_html=True
+                    )
+                else:
+                    st.markdown(
+                        f"""
+                        <div class="impedance-normal-bar">
+                            <div class="impedance-normal-bar-left">
+                                ✅ Impedance normal
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
     with st.container():
         st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
+        # 🔥 FIX: DISABLE WHEN SYSTEM FROZEN
+        disabled_controls = system_frozen()
+
         if st.button("▶️ Start", use_container_width=True):
             st.session_state.running = True
             st.session_state.started = True
+            st.rerun()
         if st.button("⏸ Pause", use_container_width=True):
+            st.session_state.started = True
             st.session_state.running = False
+            st.rerun()
 
 # ============================================================
 # CENTER PANEL
@@ -755,13 +679,21 @@ with col_right:
                         return "🔴"
                     else:
                         return "⚪"
-
-                components = [
-                    ("🔌 Switch", "Active", final_relay),
-                    ("📡 PDC", "Connected", selected_relay),
-                    ("🛡 IDS", "Alert" if result["Final_binary"] == 1 else "Monitoring", "--"),
-                    ("📝 Syslog", "Logging", "Event Log")
-                ]
+                
+                if not system_started:
+                    components = [
+                        ("🔌 Switch", "Idle", "--"),
+                        ("📡 PDC", "Idle", "--"),
+                        ("🛡 IDS", "Waiting", "--"),
+                        ("📝 Syslog", "Stopped", "--")
+                    ]
+                else:
+                    components = [
+                        ("🔌 Switch", "Active", final_relay),
+                        ("📡 PDC", "Connected", selected_relay),
+                        ("🛡 IDS", "Alert" if result["Final_binary"] == 1 else "Monitoring", "--"),
+                        ("📝 Syslog", "Logging", "Event Log")
+                    ]
 
                 for name, status, signal in components:
 
@@ -796,7 +728,6 @@ with col_right:
                     """, unsafe_allow_html=True)
 
                 else:
-
                     breaker = physical_layer.get("breaker", {})
                     line_status = physical_layer.get("line", {})
                     line_model = physical_layer.get("line_model", {})
@@ -986,40 +917,57 @@ with col_right:
                 st.markdown('<div class="custom-card">', unsafe_allow_html=True)
                 st.subheader("📊 Live PMU Waveforms")
 
-                chart_data = update_pmu_history(
-                    st.session_state,
-                    row_clean,
-                    current_display_relay,
-                    result
-                )
+                if not system_started:
+                    st.info("Waiting to start...")
 
-                x_vals = list(range(len(chart_data)))
+                else:
+                    relay_for_pmu = final_relay if final_relay != "--" else "R1"
 
-                fig_pmu = go.Figure()
-                fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase A"], mode="lines", name="Phase A"))
-                fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase B"], mode="lines", name="Phase B"))
-                fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase C"], mode="lines", name="Phase C"))
+                    # 🔥 FIX: freeze PMU when popup/review is active
+                    if system_frozen():
+                        chart_data = pd.DataFrame(st.session_state.get("pmu_history", []))
+                    else:
+                        chart_data = update_pmu_history(
+                            st.session_state,
+                            row_clean,
+                            relay_for_pmu,
+                            result,
+                            idx
+                        )
 
-                min_y = chart_data.min().min()
-                max_y = chart_data.max().max()
+                    if chart_data is not None and len(chart_data) > 0:
 
-                window = 50
-                start = max(0, len(x_vals) - window)
-                end = len(x_vals)
+                        x_vals = list(range(len(chart_data)))
 
-                fig_pmu.update_layout(
-                    template="plotly_dark",
-                    height=300,
-                    dragmode="pan",
-                    margin=dict(l=10, r=10, t=20, b=10),
-                    xaxis=dict(
-                        range=[start, end],
-                        rangeslider=dict(visible=True)
-                    ),
-                    yaxis=dict(range=[min_y - 2, max_y + 2])
-                )
+                        fig_pmu = go.Figure()
+                        fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase A"], mode="lines", name="Phase A"))
+                        fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase B"], mode="lines", name="Phase B"))
+                        fig_pmu.add_trace(go.Scatter(x=x_vals, y=chart_data["Phase C"], mode="lines", name="Phase C"))
 
-                st.plotly_chart(fig_pmu, use_container_width=True)
+                        min_y = chart_data.min().min()
+                        max_y = chart_data.max().max()
+
+                        window = 50
+                        start = max(0, len(x_vals) - window)
+                        end = len(x_vals)
+
+                        fig_pmu.update_layout(
+                            template="plotly_dark",
+                            height=300,
+                            dragmode="pan",
+                            margin=dict(l=10, r=10, t=20, b=10),
+                            xaxis=dict(
+                                range=[start, end],
+                                rangeslider=dict(visible=True)
+                            ),
+                            yaxis=dict(range=[min_y - 2, max_y + 2])
+                        )
+
+                        st.plotly_chart(fig_pmu, use_container_width=True)
+
+                    else:
+                        st.info("PMU initializing...")
+
                 st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
@@ -1062,10 +1010,7 @@ with col_right:
                     st.session_state.awaiting_review = True
                     st.session_state.running = False
 
-                    e = get_current_event()
-                    if e:
-                        st.session_state.current_event = e
-                        st.session_state.current_event_id = e.get("Event ID")
+                    st.session_state.locked_event_id = st.session_state.current_event_id
 
                 scenario_id = result["Final_class"]
                 attack_type = get_attack_type(result["Final_class"])
@@ -1231,38 +1176,62 @@ with col_right:
         # =========================
         st.markdown("### ⚡ Actions")
 
+        def get_target_relay():
+            selected = st.session_state.get("selected_component")
+
+            if selected and str(selected).startswith("R"):
+                return selected
+
+            selected_relay = st.session_state.get("selected_relay", "AUTO")
+            if selected_relay != "AUTO":
+                return selected_relay
+
+            return st.session_state.get("control_target") or final_relay
+
         # 🔌 ISOLATE
-        if st.button("🔌 Isolate", use_container_width=True):
+        if st.button("🔌 Isolate", width="stretch"):
 
-        # 🔥 update system state
-            st.session_state.control_state["isolated"].add(final_relay)
+            relay = get_target_relay()
 
-        # 🔥 unified logging + event tracking
-            add_user_action("Isolate", final_relay)
-        
+            st.session_state.control_state["isolated"].add(relay)
+            st.session_state.control_target = relay
+
+            add_user_action("Isolate", relay)
+
             st.session_state.actions_clicked = True
             st.rerun()
-
 
         # 🔒 LOCK
-        if st.button("🔒 Lock", use_container_width=True):
+        if st.button("🔒 Lock", width="stretch"):
 
-            st.session_state.control_state["locked"].add(final_relay)
+            relay = get_target_relay()
 
-            add_user_action("Lock", final_relay)
+            st.session_state.control_state["locked"].add(relay)
+            st.session_state.control_target = relay
+
+            add_user_action("Lock", relay)
+
             st.session_state.actions_clicked = True
             st.rerun()
-
 
         # 🛠 RESTORE
-        if st.button("🛠 Restore", use_container_width=True):
+        if st.button("🛠 Restore", width="stretch"):
 
-            st.session_state.control_state["isolated"].discard(final_relay)
-            st.session_state.control_state["locked"].discard(final_relay)
+            relay = get_target_relay()
 
-            add_user_action("Restore", final_relay)
+            if relay:
+                st.session_state.control_state["isolated"].discard(relay)
+                st.session_state.control_state["locked"].discard(relay)
+
+                # clear saved target if it matches restored relay
+                if st.session_state.get("control_target") == relay:
+                    st.session_state.control_target = None
+
+                add_user_action("Restore", relay)
+
             st.session_state.actions_clicked = True
             st.rerun()
+
     # ============================================================
     # 📋 EVENT LOG (FINAL VERSION)
     # ============================================================
@@ -1317,352 +1286,113 @@ with col_right:
 
     
     # 🔥 OPEN SCROLL CONTAINER HERE
-    with st.container(height=400):
+    with st.container(height=300):
 
-        # =========================
-        # EVENT MAP (FAST LOOKUP)
-        # =========================
-        event_map = {e["Event ID"]: e for e in st.session_state.logs}
+        if not st.session_state.log_rows:
+            st.info("Waiting for events...")
+        else:
+            # =========================
+            # EVENT MAP (FAST LOOKUP)
+            # =========================
+            event_map = {e["Event ID"]: e for e in st.session_state.logs}
 
-        # =========================
-        # ROW RENDER FUNCTION
-        # =========================
-        def render_row(row, color, idx):
+            # =========================
+            # ROW RENDER FUNCTION
+            # =========================
+            def render_row(row, color, idx):
 
-            cols = st.columns(widths)
+                cols = st.columns(widths)
 
-            for i, key in enumerate(display_columns_with_view):
+                for i, key in enumerate(display_columns_with_view):
 
-                with cols[i]:
+                    with cols[i]:
 
-                    # 🔍 VIEW BUTTON
-                    if key == "View":
-                        if st.button(
-                            "🔍",
-                            key=f"view_{idx}"
-                        ):
+                        # 🔍 VIEW BUTTON
+                        if key == "View":
+                            if st.button(
+                                "🔍",
+                                key=f"view_{idx}"
+                            ):
 
-                            event_id = row.get("Event ID")
-                            e = event_map.get(event_id)
+                                event_id = row.get("Event ID")
+                                e = event_map.get(event_id)
 
-                            if e:
-                                # 🔥 SET MODE = VIEW
-                                st.session_state.modal_mode = "view"
+                                if e:
+                                    # =========================
+                                    # 👁 OPEN POPUP (VIEW ONLY)
+                                    # =========================
+                                    st.session_state.modal_mode = "view"
+                                    st.session_state.selected_event = e
+                        else:
+                            val = row.get(key, "--")
 
-                                # 🔥 OPEN MODAL
-                                st.session_state.selected_event = e
+                            st.markdown(f"""
+                            <div style="
+                                padding:6px 8px;
+                                border-left:3px solid {color};
+                                background:rgba(15,23,42,0.6);
+                                border-radius:6px;
+                                font-size:12px;
+                                color:white;
+                                white-space:nowrap;
+                                overflow:hidden;
+                                text-overflow:ellipsis;
+                            ">
+                                {val}
+                            </div>
+                            """, unsafe_allow_html=True)
 
-                                st.rerun()
+            # =========================
+            # GROUP LOGS BY EVENT ID
+            # =========================
+            from collections import defaultdict
 
+            grouped = defaultdict(list)
+
+            for row in st.session_state.log_rows:
+                grouped[row["Event ID"]].append(row)
+
+            # =========================
+            # RENDER EVENTS
+            # =========================
+            row_counter = 0
+
+            for event_id, rows in grouped.items():
+
+                # sort by time
+                rows = sorted(rows, key=lambda x: x["Timestamp"])
+
+                for row in rows:
+
+                    source = row.get("Source", "")
+
+                    # 🎨 COLOR BY SOURCE
+                    if source == "Physical":
+                        color = "#3b82f6"   # blue
+                    elif source == "IDS":
+                        color = "#ef4444"   # red
+                    elif source == "User":
+                        color = "#f59e0b"   # yellow
                     else:
-                        val = row.get(key, "--")
+                        color = "#64748b"
 
-                        st.markdown(f"""
-                        <div style="
-                            padding:6px 8px;
-                            border-left:3px solid {color};
-                            background:rgba(15,23,42,0.6);
-                            border-radius:6px;
-                            font-size:12px;
-                            color:white;
-                            white-space:nowrap;
-                            overflow:hidden;
-                            text-overflow:ellipsis;
-                        ">
-                            {val}
-                        </div>
-                        """, unsafe_allow_html=True)
+                    render_row(row, color, row_counter)
+                    row_counter += 1
 
-        # =========================
-        # GROUP LOGS BY EVENT ID
-        # =========================
-        from collections import defaultdict
-
-        grouped = defaultdict(list)
-
-        for row in st.session_state.log_rows:
-            grouped[row["Event ID"]].append(row)
-
-        # =========================
-        # RENDER EVENTS
-        # =========================
-        row_counter = 0
-
-        for event_id, rows in grouped.items():
-
-            # sort by time
-            rows = sorted(rows, key=lambda x: x["Timestamp"])
-
-            for row in rows:
-
-                source = row.get("Source", "")
-
-                # 🎨 COLOR BY SOURCE
-                if source == "Physical":
-                    color = "#3b82f6"   # blue
-                elif source == "IDS":
-                    color = "#ef4444"   # red
-                elif source == "User":
-                    color = "#f59e0b"   # yellow
-                else:
-                    color = "#64748b"
-
-                render_row(row, color, row_counter)
-                row_counter += 1
-
-            # 🔥 EVENT SEPARATOR
-            st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
-
-
+                # 🔥 EVENT SEPARATOR
+                st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
 # ============================================================
 # 🧾 EVENT POPUP VIEW (FINAL - 3 COLUMN LAYOUT)
 # ============================================================
-@st.dialog(" ", width="large")
-def show_event_detail(e):
-    st.markdown("""
-        <div style='text-align:center; width:100%; margin-top:-15px;'>
-            <span style='font-size:36px; font-weight:700; color:#e2e8f0;'>
-                Event Detail
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <style>
-    button[aria-label="Close"] {
-        display: none !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+if st.session_state.get("selected_event"):
+    show_event_detail(st.session_state.selected_event)
 
-    event_id = e.get("Event ID", "UNKNOWN")
-    main_relay = e.get("P", {}).get("Main Relay", "--")
-    p_time = e.get("P", {}).get("Timestamp", "--")
-    m_time = e.get("M", {}).get("Timestamp", "--")
-    u_time = e.get("U", [{}])[-1].get("Timestamp", "--") if e.get("U") else "--"
-
-
-    m = e.get("M")
-    u_list = e.get("U", [])
-    P_full = e.get("P_full", {})
-
-    # =========================
-    # 🧼 TIME EXTRACTION (ROBUST)
-    # =========================
-    def extract_time(ts):
-        if not ts or ts == "--":
-            return "-"
-
-        ts = str(ts)
-
-        # already time only
-        if ":" in ts and ("AM" in ts or "PM" in ts) and len(ts.split()) <= 2:
-            return ts
-
-        # full datetime → take last part
-        parts = ts.split()
-        if len(parts) >= 2:
-            return " ".join(parts[-2:])
-
-        return ts
-
-    p_time_only = extract_time(p_time)
-    ids_time_only = extract_time(m_time)
-    user_time_only = extract_time(u_time)
-
-    # =========================
-    # 🔝 HEADER
-    # =========================
-    st.markdown(f"""
-    <div style="
-        padding:12px 16px;
-        border-radius:10px;
-        background:linear-gradient(90deg,#0f172a,#1e293b);
-        border:1px solid rgba(148,163,184,0.2);
-        margin-bottom:10px;
-    ">
-        <b style="font-size:24px;">Event ID:</b> {event_id}
-        <span style="float:right; font-size:24px;">
-            ⚡ Relay: <b>{main_relay}</b>
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # =========================
-    # ⏱ EVENT FLOW (TOP ROW)
-    # =========================
-    st.markdown("## ⏱ Event Flow")
-
-    flow_cols = st.columns([1.25, 0.08, 1, 0.08, 1])
-
-    # 🔵 Physical
-    with flow_cols[0]:
-        st.markdown(f"### ⚡ Physical({p_time_only})")
-    # 🔴 IDS
-    with flow_cols[2]:
-        st.markdown(f"### 🛡 IDS ({ids_time_only})")
-
-    # 🟡 User
-    with flow_cols[4]:
-        st.markdown(f"### 👤 User ({user_time_only})")
-
-
-    # =========================
-    # 📊 MAIN 3-COLUMN VIEW
-    # =========================
-    col1, spacer1, col2, spacer2, col3 = st.columns([1.25, 0.08, 1, 0.08, 1])
-
-    # =========================
-    # ⚡ PHYSICAL COLUMN
-    # =========================
-    with col1:
-        if P_full:
-            st.markdown("#### Measurements")
-            st.markdown('<div style="max-width:500px;">', unsafe_allow_html=True)
-            st.dataframe(
-                pd.DataFrame(P_full.get("Measurements", [])),
-                use_container_width=True,
-                hide_index=True
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown("#### Relay Analysis")
-            st.markdown('<div style="max-width:700px;">', unsafe_allow_html=True)
-            st.dataframe(
-                pd.DataFrame(P_full.get("Relay Analysis", [])),
-                use_container_width=True,
-                hide_index=True
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            st.markdown("#### System State")
-            st.markdown('<div style="max-width:600px;">', unsafe_allow_html=True)
-            st.dataframe(
-                pd.DataFrame(P_full.get("System State", [])),
-                use_container_width=True,
-                hide_index=True
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        else:
-            st.info("No physical data")
-    # =========================
-    # 🛡 IDS COLUMN
-    # =========================
-    with col2:
-        st.markdown(" ")
-        st.markdown(" ")
-        if m:
-            for key, value in m.items():
-                # 設定 32px 為大字體，也可以根據需求調整
-                # 在程式開頭注入 CSS
-                # 使用 <div> 或 <span> 並加上 id="ids_overlay_text
-                st.markdown(f"""
-                <div style="
-                    font-size:24px;
-                    font-weight:bold;
-                    color:#ffffff;
-                    text-shadow: 0 0 10px rgba(239,68,68,0.7);
-                    margin-bottom:20px;
-                ">
-                    {key}: {value}
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("Awaiting IDS decision")
-
-    # =========================
-    # 👤 USER COLUMN (ONLY IF EXISTS)
-    # =========================
-    with col3:
-        st.markdown(" ")
-        st.markdown(" ")
-        if u_list:
-            st.dataframe(
-                pd.DataFrame(u_list),
-                use_container_width=True,
-                hide_index=True
-            )
-        else:
-            st.info("No user actions")
-        # =========================
-        # Action buttons (button)
-        # =========================
-        st.markdown("### ⚡ Operator Actions")
-
-        relay = e.get("P", {}).get("Main Relay", "--")
-
-        if st.button("🔌 Isolate", use_container_width=True):
-            if relay:
-                st.session_state.control_state["isolated"].add(relay)
-                add_user_action("Isolate", relay)
-                st.session_state.actions_clicked = True
-                st.rerun()
-
-        if st.button("🔒 Lock", use_container_width=True):
-            if relay:
-                st.session_state.control_state["locked"].add(relay)
-                add_user_action("Lock", relay)
-                st.session_state.actions_clicked = True
-                st.rerun()
-
-        if st.button("🛠 Restore", use_container_width=True):
-            if relay:
-                st.session_state.control_state["restored"].add(relay)
-                add_user_action("Restore", relay)
-                st.session_state.actions_clicked = True
-                st.rerun()
-
-        if st.button("🟡 Ack", use_container_width=True):
-            add_user_action("Acknowledge", relay)
-            st.session_state.awaiting_review = False
-            st.session_state.actions_clicked = True
-    
-        if st.button("⛔ Ignore", use_container_width=True):
-            add_user_action("Ignore", relay)
-            st.session_state.awaiting_review = False
-            st.session_state.running = True
-            st.session_state.actions_clicked = True
-            st.rerun()
-
-    # =========================
-    # ❌ CLOSE BUTTON
-    # =========================
-    st.markdown(" ")
-    if st.button("Close", use_container_width=True):
-
-        # 🔥 HANDLE INVESTIGATE DELAYED LOGGING
-        if st.session_state.get("modal_mode") == "investigate":
-            e_pending = st.session_state.get("pending_action")
-
-            if e_pending and e_pending.get("M"):
-                add_log_row(
-                    e_pending["Event ID"],
-                    source="IDS",
-                    data=e_pending["M"]
-                )
-        # ✅ mark modal as closing FIRST
-        st.session_state.closing_modal = True
-
-        # reset state
-        st.session_state.pending_action = None
-        st.session_state.modal_mode = None
-        st.session_state.selected_event = None
-        st.session_state.awaiting_review = False
-
-        st.rerun()
 
 # ============================================================
 # 🔥 CLOSE MAIN CONTENT (VERY IMPORTANT)
 # ============================================================
 st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================
-# 🧾 EVENT POPUP VIEW (NOW ROOT LEVEL)
-# ============================================================
-if st.session_state.get("selected_event"):
-    show_event_detail(st.session_state.selected_event)
 
 
 

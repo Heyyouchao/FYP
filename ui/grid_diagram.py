@@ -3,6 +3,13 @@ import streamlit as st
 
 def draw_grid(physical_layer, selected=None):
 
+    RELAY_TO_LINE = {
+        "R1": "L1",
+        "R2": "L1",
+        "R3": "L2",
+        "R4": "L2"
+    }
+    
     relay = physical_layer["relay"]
     generator = physical_layer["generator"]
     bus = physical_layer["bus"]
@@ -10,16 +17,16 @@ def draw_grid(physical_layer, selected=None):
     line_status = physical_layer["line"]
     line_model = physical_layer.get("line_model", {})
 
+    control = st.session_state.get("control_state", {})
+
     color_map = {
         "🔴": "#ef4444",
         "🟡": "#f59e0b",
         "🟢": "#10b981",
-        "⚪": "#9ca3af"
+        "⚪": "#9ca3af",
+        "🟣": "#8b5cf6"
     }
 
-    # =========================
-    # COLORS
-    # =========================
     HIGHLIGHT_COLOR = "#3b82f6"
     HIGHLIGHT_OPACITY = 0.25
     LINE_HIGHLIGHT_COLOR = "#22d3ee"
@@ -105,7 +112,7 @@ def draw_grid(physical_layer, selected=None):
                 type="line",
                 x0=x0, y0=MAIN_Y,
                 x1=x1, y1=MAIN_Y,
-                line=dict(color=color_map[state], width=8 if state=="🔴" else 5)
+                line=dict(color=color_map[state], width=8 if state == "🔴" else 5)
             )
 
         fig.add_annotation(
@@ -115,7 +122,6 @@ def draw_grid(physical_layer, selected=None):
             font=dict(color=font_color, size=20)
         )
 
-        # ⚠ mismatch (only if not selected)
         if model_state and model_state != state and selected != line_key:
             fig.add_annotation(
                 x=label_x,
@@ -209,11 +215,17 @@ def draw_grid(physical_layer, selected=None):
         )
 
     # =========================
-    # RELAYS
+    # RELAYS (🔥 FIXED PRIORITY)
     # =========================
     for r in ["R1","R2","R3","R4"]:
         x, y = pos[r]
-        c = color_map.get(relay[r]["color"], "#9ca3af")
+
+        if r in control.get("isolated", set()):
+            c = color_map["⚪"]
+        elif r in control.get("locked", set()):
+            c = color_map["🟣"]
+        else:
+            c = color_map.get(relay[r]["color"], "#9ca3af")
 
         if selected == r:
             fig.add_shape(
@@ -241,79 +253,72 @@ def draw_grid(physical_layer, selected=None):
         )
 
     # =========================
-    # 🔥 BADGE SYSTEM (FINAL)
+    # 🔥 BADGE SYSTEM (FINAL FIX)
     # =========================
     badges = []
     severity = "none"
 
-    for l in ["L1", "L2"]:
-        model_state = line_model.get(l)
-        actual_state = line_status[l]
+    override_lines = set()
 
-        if model_state and model_state != actual_state:
+    for r in control.get("isolated", set()).union(control.get("locked", set())):
+        line = RELAY_TO_LINE.get(r)
+        if line:
+            override_lines.add(line)
 
-            if model_state == "🟢" and actual_state == "🔴":
-                badges.append(f"Injection detected in {l}")
-                severity = "warning"
-
-            elif model_state == "🔴" and actual_state == "🟢":
-                badges.append(f"Relay failure on {l}")
-                severity = "warning"
-
-            else:
-                badges.append(f"Model inconsistency on {l}")
-                severity = "warning"
-
-    # 🔥 severity logic (NO collapsing)
-    if len(badges) == 1:
+    if override_lines:
+        for l in override_lines:
+            badges.append(f"🛠 Operator override on {l}")
         severity = "warning"
-    elif len(badges) >= 2:
-        severity = "critical"
 
-    # -------------------------
-    # visual style
-    # -------------------------
+    else:
+        for l in ["L1", "L2"]:
+            model_state = line_model.get(l)
+            actual_state = line_status[l]
+
+            if model_state and model_state != actual_state:
+                badges.append(f"⚠️ Model inconsistency on {l}")
+
+        if len(badges) == 1:
+            severity = "warning"
+        elif len(badges) >= 2:
+            severity = "critical"
+
     if severity == "critical":
         bg = "#ef4444"
-        icon = "🚨"
     elif severity == "warning":
-        bg = "#f59e0b"
-        icon = "⚠️"
+        bg = "#f89e01"
     else:
         bg = None
 
     if badges:
-        text = " | ".join([f"{icon} {b}" for b in badges])
-
+        text = " | ".join(badges)
         fig.add_annotation(
             x=0.97,
             y=0.97,
             xref="paper",
             yref="paper",
-            text=text,
+            text=f"<b>{text}</b>",
             showarrow=False,
-            font=dict(size=14, color="white"),
+            font=dict(size=16, color="white"),
             align="left",
             bgcolor=bg,
             bordercolor=bg,
             borderwidth=2,
-            borderpad=6
+            borderpad=8
         )
 
     # =========================
-    # 🔥 CLICKABLE LAYER (FINAL FIX)
+    # CLICKABLE LAYER (UNCHANGED)
     # =========================
-    names = []
-    xs = []
-    ys = []
+    names, xs, ys = [], [], []
 
     for name, (x, y) in pos.items():
         names.append(name)
         xs.append(x)
         ys.append(y)
-    
+
     line_click_pos = {
-        "L1": ((0.75 + 3.5) / 2, MAIN_Y),
+        "L1": ((0.75 + 5.5) / 2, MAIN_Y),
         "L2": ((5.5 + 10.25) / 2, MAIN_Y)
     }
 
@@ -321,22 +326,20 @@ def draw_grid(physical_layer, selected=None):
         names.append(name)
         xs.append(x)
         ys.append(y)
-    
+
     fig.add_trace(go.Scatter(
         x=xs,
         y=ys,
         mode="markers",
-        marker=dict(size=35, color="rgba(0,0,0,01)"
-        ),  
-        text=names,   # 🔥 REQUIRED
+        marker=dict(size=35, color="rgba(0,0,0,0)"),
+        text=names,
         hoverinfo="text",
         showlegend=False
     ))
-        
 
     fig.update_layout(
         template="plotly_dark" if theme == "dark" else "plotly_white",
-        height=400,
+        height=420,
         margin=dict(l=10, r=10, t=10, b=10),
         xaxis=dict(visible=False, range=[0,11], scaleanchor="y"),
         yaxis=dict(visible=False, range=[4.5,7.5], scaleanchor="x"),
