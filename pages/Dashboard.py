@@ -16,6 +16,7 @@ from ui.styles import load_css
 from ui.header import render_header
 from ui.event_modal import show_event_detail
 from streamlit_plotly_events import plotly_events
+from ui.confirm_ignore import confirm_ignore_dialog
 
 st.markdown(load_css(), unsafe_allow_html=True)
 
@@ -60,6 +61,7 @@ df_debug, df_live_raw = load_data()
 # MODE
 # ============================================================
 mode = st.session_state.get("mode", "Debug Mode")
+scenario = None
 
 # ============================================================
 # SESSION STATE (SAFE INIT)
@@ -349,18 +351,6 @@ def get_flagged_relays(row):
 
     return flagged
 
-
-
-# =========================
-# HEADER
-# =========================
-scenario = render_header(
-    mode,
-    st.session_state.get("running", False),
-    df_debug,
-    result= None if "result" in locals() else None
-)
-
 # =========================
 # INIT STATE (SAFE)
 # =========================
@@ -417,12 +407,18 @@ else:
     # optional debug display
     st.caption(f"Live sample from scenario: {row_raw['marker']}")
 
+
+# ============================================================
+# MODEL + RESULT (CLEAN & SAFE)
+# ============================================================
 if not system_started:
-    final_relay ="--"
+    final_relay = "--"
     physical_relay = "--"
-    raw_scores = {f"R{i}": 0 for i in range(1,5)}
-    norm_scores = {f"R{i}": 0 for i in range(1,5)}
+
+    raw_scores = {f"R{i}": 0 for i in range(1, 5)}
+    norm_scores = {f"R{i}": 0 for i in range(1, 5)}
     top_features = {}
+
     result = {
         "Final_binary": 0,
         "Final_conf": 0,
@@ -434,26 +430,77 @@ if not system_started:
     }
 
 else:
-    # ============================================================
+    # -------------------------
     # 1. PHYSICAL MODEL
-    # ============================================================
+    # -------------------------
     raw_scores, norm_scores, state, top_features = classify_relay_scores(row_clean)
 
     physical_relay = max(raw_scores, key=raw_scores.get)
 
-    # ============================================================
+    # -------------------------
     # 2. ML PREDICT
-    # ============================================================
+    # -------------------------
     row_model = get_model_input(row_clean, FEATURE_COLS)
     result = predict_one(row_model, FEATURE_COLS)
 
-    # ============================================================
+    # -------------------------
     # 3. FUSION
-    # ============================================================
+    # -------------------------
     final_relay, scores = get_most_affected_relay(
         row_clean,
         raw_scores
     )
+
+
+# ============================================================
+# HEADER DATA (SAFE)
+# ============================================================
+if not system_started:
+    header_relay = "--"
+    header_label = "--"
+    header_result = None
+else:
+    header_relay = final_relay
+    header_label = result.get("Final_label", "--")
+    header_result = result
+
+
+# ============================================================
+# HEADER (ALWAYS RENDER ONCE)
+# ============================================================
+scenario = render_header(
+    mode,
+    df_debug,
+    result=header_result,
+    final_relay=header_relay,
+    final_label=header_label
+)
+
+
+# ============================================================
+# 🚨 REVIEW BANNER (BOX STYLE)
+# ============================================================
+if st.session_state.get("awaiting_review", True):
+
+    st.markdown("""
+    <div style="
+        width:100%;
+        padding:16px;
+        margin:15px 0;
+        border-radius:10px;
+        text-align:center;
+        font-size:15px;
+        font-weight:700;
+
+        background:linear-gradient(90deg,#7f1d1d,#dc2626);
+        color:white;
+
+        border:2px solid #ef4444;
+        box-shadow:0 0 12px rgba(239,68,68,0.5);
+    ">
+        🚨 ACTION REQUIRED — Review IDS Alert
+    </div>
+    """, unsafe_allow_html=True)
 
 # ============================================================
 # 4. GRID
@@ -478,7 +525,7 @@ else:
 # AUTO CREATE PHYSICAL EVENT (FIXED)
 # ============================================================
 if system_started:
-    if not system_frozen() and not modal_just_closed():
+    if not system_frozen():
         event = create_event(
             row_clean,
             raw_scores,
@@ -522,19 +569,19 @@ with col_left:
         b0, b1, b2, b3, b4 = st.columns(5)
 
         with b0:
-            if st.button("Auto", key="relay_auto"):
+            if st.button("Auto", key="relay_auto", type="secondary"):
                 st.session_state.selected_relay = "AUTO"
         with b1:
-            if st.button("R1", key="relay_r1"):
+            if st.button("R1", key="relay_r1", type="secondary"):
                 st.session_state.selected_relay = "R1"
         with b2:
-            if st.button("R2", key="relay_r2"):
+            if st.button("R2", key="relay_r2", type="secondary"):
                 st.session_state.selected_relay = "R2"
         with b3:
-            if st.button("R3", key="relay_r3"):
+            if st.button("R3", key="relay_r3", type="secondary"):
                 st.session_state.selected_relay = "R3"
         with b4:
-            if st.button("R4", key="relay_r4"):
+            if st.button("R4", key="relay_r4", type="secondary"):
                 st.session_state.selected_relay = "R4"
 
         current_display_relay = (
@@ -607,15 +654,31 @@ with col_left:
         # 🔥 FIX: DISABLE WHEN SYSTEM FROZEN
         disabled_controls = system_frozen()
 
-        if st.button("▶ Start", use_container_width=True):
+        # =========================
+        # ▶ START / RESUME BUTTON
+        # =========================
+        label = "▶ Start" if not st.session_state.started else "▶ Resume"
+
+        if st.button(label, use_container_width=True, type="primary"):
+
+            # 🔥 always resume system
             st.session_state.running = True
             st.session_state.started = True
+
+            # 🔥 clear stuck states (important for Resume)
+            st.session_state.awaiting_review = False
+            st.session_state.selected_event = None
+            st.session_state.modal_mode = None
+            st.session_state.modal_opened = False
+            st.session_state.pending_action = None
+            st.session_state.actions_clicked = False
+
             st.rerun()
-        if st.button("⏸ Pause", use_container_width=True):
+        if st.button("⏸ Pause", use_container_width=True, type="primary"):
             st.session_state.started = True
             st.session_state.running = False
             st.rerun()
-
+        
 # ============================================================
 # CENTER PANEL
 # ============================================================
@@ -914,7 +977,7 @@ with col_right:
                     # =========================
                     # CLEAR
                     # =========================
-                    if st.button("Clear", use_container_width=True):
+                    if st.button("Clear", use_container_width=True, type="tertiary"):
                         st.session_state.selected_component = None
                         st.rerun()
 
@@ -1010,14 +1073,20 @@ with col_right:
                 )
             current_time = datetime.datetime.now().strftime("%I:%M %p")
 
-            if result["Final_binary"] == 1 or st.session_state.awaiting_review and not modal_just_closed():
+
+            if (result["Final_binary"] == 1 or st.session_state.awaiting_review) and not modal_just_closed():
+                
 
                 if not st.session_state.awaiting_review and st.session_state.current_event:
                     st.session_state.awaiting_review = True
                     st.session_state.running = False
 
-                    st.session_state.locked_event_id = st.session_state.current_event_id
+                    st.write("running:", st.session_state.running)
+                    st.write("awaiting_review:", st.session_state.awaiting_review)
 
+                    st.session_state.locked_event_id = st.session_state.current_event_id
+                
+                st.write("DEBUG awaiting_review:", st.session_state.get("awaiting_review"))
                 scenario_id = result["Final_class"]
                 attack_type = get_attack_type(result["Final_class"])
 
@@ -1048,7 +1117,7 @@ with col_right:
                 b1, b2, b3 = st.columns([1.5,1,1])
 
                 with b1:
-                    if st.button("🔍 Investigate", key="investigate_btn", use_container_width=True):
+                    if st.button("🔍 Investigate", key="investigate_btn", use_container_width=True, type="secondary"):
 
                         e = st.session_state.current_event
 
@@ -1068,12 +1137,14 @@ with col_right:
                             # 🔥 store pending action
                             st.session_state.pending_action = e
 
+                            st.session_state.modal_opened = True
+
                             # 🔥 open modal
                             st.session_state.selected_event = e
 
 
                 with b2:
-                    if st.button("🟡 Ack", key="ack_btn", use_container_width=True):
+                    if st.button("🟡 Ack", key="ack_btn", use_container_width=True, type="secondary"):
 
                         e = st.session_state.current_event
 
@@ -1102,31 +1173,9 @@ with col_right:
 
 
                 with b3:
-                    if st.button("⛔ Ignore", key="ignore_btn", use_container_width=True):
-
-                        e = st.session_state.current_event
-
-                        if e:
-                            e["M"] = build_M(
-                                result,
-                                final_relay,
-                                scenario,
-                                mode,
-                                action="Ignore"
-                            )
-
-                            m_data = e["M"]
-
-                            # guarantee Action exists
-                            m_data["Action"] = m_data.get("Action", "Ignore")
-
-                            add_log_row(
-                                e["Event ID"],
-                                source="IDS",
-                                data=m_data
-                            )
-                            st.session_state.awaiting_review = False
-                            st.session_state.running = True
+                    if st.button("⛔ Ignore", key="ignore_btn", use_container_width=True, type="secondary"):
+                        st.session_state.confirm_ignore = st.session_state.current_event_id
+                        st.rerun()
 
             else:
                 border_color = "rgba(255,255,255,0.08)" 
@@ -1174,9 +1223,11 @@ with col_right:
                 # =========================
                 # REVIEW BUTTON ONLY
                 # =========================
-                if st.button("Review", key="view_logs_btn", use_container_width=True):
+                if st.button("Review", key="view_logs_btn", use_container_width=True, type="secondary"):
                     if e:
+                        st.session_state.modal_mode = "review"
                         st.session_state.selected_event = e
+                        st.session_state.running = False
         #=========================
         # ⚡ ACTIONS
         # =========================
@@ -1195,7 +1246,7 @@ with col_right:
             return st.session_state.get("control_target") or final_relay
 
         # 🔌 ISOLATE
-        if st.button("🔌 Isolate", width="stretch"):
+        if st.button("🔌 Isolate", width="stretch", type="primary"):
 
             relay = get_target_relay()
 
@@ -1208,7 +1259,7 @@ with col_right:
             st.rerun()
 
         # 🔒 LOCK
-        if st.button("🔒 Lock", width="stretch"):
+        if st.button("🔒 Lock", width="stretch", type="primary"):
 
             relay = get_target_relay()
 
@@ -1221,7 +1272,7 @@ with col_right:
             st.rerun()
 
         # 🛠 RESTORE
-        if st.button("🛠 Restore", width="stretch"):
+        if st.button("🛠 Restore", width="stretch", type="primary"):
 
             relay = get_target_relay()
 
@@ -1325,7 +1376,7 @@ with col_right:
                         if key == "View":
                             if st.button(
                                 "🔍",
-                                key=f"view_{idx}"
+                                key=f"view_{idx}", type="secondary", use_container_width=True
                             ):
 
                                 event_id = row.get("Event ID")
@@ -1396,6 +1447,15 @@ with col_right:
                 # 🔥 EVENT SEPARATOR
                 st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
 
+
+if st.session_state.get("confirm_ignore"):
+    confirm_ignore_dialog(
+        result=result,
+        final_relay=final_relay,
+        scenario=scenario,
+        mode=mode
+    )
+
 # ============================================================
 # 🧾 EVENT POPUP VIEW (FINAL - 3 COLUMN LAYOUT)
 # ============================================================
@@ -1408,18 +1468,14 @@ if st.session_state.get("selected_event"):
 # ============================================================
 st.markdown('</div>', unsafe_allow_html=True)
 
-
-
 # ============================================================
 # AUTO REFRESH
 # ============================================================
 if (
     st.session_state.running
     and not st.session_state.awaiting_review
-    and not st.session_state.get("closing_modal", False)
-    and not st.session_state.get("action_clicked", False)
     and st.session_state.get("selected_component") is None
-    and st.session_state.get("selected_event") is None  # ✅ ADD THIS
+    and st.session_state.get("selected_event") is None  # ✅ ADD THIS  # ✅ ADD THIS
 ):
     time.sleep(1)
     st.rerun()

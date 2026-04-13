@@ -13,15 +13,15 @@ def is_current_event(event_id):
     return event_id == st.session_state.get("current_event_id")
 
 
-@st.dialog(" ", width="large")
+@st.dialog("Event Detail", width="large")
 def show_event_detail(e):
-
+    st.markdown('<div class="dialog-big"></div>', unsafe_allow_html=True)
     # ============================================================
     # HEADER
     # ============================================================
-    st.markdown("""
-        <div style='text-align:center; width:100%; margin-top:-15px;'>
-            <span style='font-size:36px; font-weight:700; color:#e2e8f0;'>
+    st.markdown(f"""
+        <div style='text-align:center; width:100%; margin-top:10px; margin-bottom:10px'>
+            <span style='font-size:40px; font-weight:700;'>
                 Event Detail
             </span>
         </div>
@@ -69,21 +69,39 @@ def show_event_detail(e):
     # ============================================================
     # HEADER UI
     # ============================================================
-    st.markdown(f"""
-    <div style="
-        padding:12px 16px;
-        border-radius:10px;
-        background:linear-gradient(90deg,#0f172a,#1e293b);
-        border:1px solid rgba(148,163,184,0.2);
-        margin-bottom:10px;
-    ">
-        <b style="font-size:24px;">Event ID:</b> {event_id}
-        <span style="float:right; font-size:24px;">
-            ⚡ Relay: <b>{relay}</b>
-        </span>
-    </div>
-    """, unsafe_allow_html=True)
-
+    col_header, col_tip = st.columns([3, 2])
+    with col_header:
+        st.markdown(f"""
+        <div style="
+            padding:12px 16px;
+            border-radius:10px;
+            background:linear-gradient(90deg,#0f172a,#1e293b);
+            border:1px solid rgba(148,163,184,0.2);
+            margin-bottom:10px;
+        ">
+            <b style="font-size:24px;">Event ID:</b> <b style="font-size:24px; color: #ffffff;"> {event_id}</b>
+            <span style="float:right; font-size:24px;">
+                ⚡ Relay: <b>{relay}</b>
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_tip:
+        st.markdown("""
+        <div style="
+            margin: 10px 0 18px 0;
+            padding: 12px 18px;
+            border-radius: 12px;
+            background: linear-gradient(145deg, rgba(30,41,59,0.7), rgba(15,23,42,0.7));
+            border: 1px solid rgba(148,163,184,0.3);
+            font-size: 24px;
+            font-weight: 500;
+            color: #fffffff;
+            text-align: center;
+        ">
+            💡 Tip: If the popup does not close, click outside the window to exit.
+        </div>
+        """, unsafe_allow_html=True)
+   
     st.markdown("## ⏱ Event Flow")
 
     flow_cols = st.columns([1.25, 0.08, 1, 0.08, 1])
@@ -127,6 +145,7 @@ def show_event_detail(e):
                     font-size:20px;
                     font-weight:bold;
                     color:#ffffff;
+                    margin-top:8px;
                     margin-bottom:10px;
                 ">
                     {key}: {value}
@@ -157,7 +176,7 @@ def show_event_detail(e):
         # =========================
         # 🔌 ISOLATE
         # =========================
-        if st.button("🔌 Isolate", use_container_width=True):
+        if st.button("🔌 Isolate", use_container_width=True, type="primary"):
             if relay != "--":
 
                 if is_current_event(event_id):
@@ -171,7 +190,7 @@ def show_event_detail(e):
         # =========================
         # 🔒 LOCK
         # =========================
-        if st.button("🔒 Lock", use_container_width=True):
+        if st.button("🔒 Lock", use_container_width=True, type="primary"):
             if relay != "--":
 
                 if is_current_event(event_id):
@@ -185,7 +204,7 @@ def show_event_detail(e):
         # =========================
         # 🛠 RESTORE
         # =========================
-        if st.button("🛠 Restore", use_container_width=True):
+        if st.button("🛠 Restore", use_container_width=True, type="primary"):
             if relay != "--":
 
                 if is_current_event(event_id):
@@ -201,7 +220,7 @@ def show_event_detail(e):
         # =========================
         # 🟡 ACK
         # =========================
-        if st.button("🟡 Ack", use_container_width=True):
+        if st.button("🟡 Ack", use_container_width=True, type="primary"):
 
             if is_current_event(event_id):
                 st.session_state.awaiting_review = False
@@ -210,17 +229,36 @@ def show_event_detail(e):
             st.success(f"Acknowledged event {event_id}")
 
         # =========================
-        # ⛔ IGNORE
+        # ⛔ IGNORE (with confirm)
         # =========================
-        if st.button("⛔ Ignore", use_container_width=True):
-
+        if st.button("⛔ Ignore", use_container_width=True, type="primary"):
             if is_current_event(event_id):
-                st.session_state.awaiting_review = False
-                st.session_state.running = True
+                if st.session_state.get("confirm_ignore") == event_id:
+                    # Confirmed — proceed
+                    st.session_state.awaiting_review = False
+                    st.session_state.running = True
+                    add_user_action("Ignore", relay, event_id=event_id)
+                    st.session_state.confirm_ignore = None
+                    st.success(f"Ignored event {event_id}")
+                else:
+                    # First click — ask for confirmation
+                    st.session_state.confirm_ignore = event_id
 
-            add_user_action("Ignore", relay, event_id=event_id)
-            st.success(f"Ignored event {event_id}")
-
+        if st.session_state.get("confirm_ignore") == event_id:
+            st.warning("Are you sure you want to ignore this event?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes, ignore", use_container_width=True, type="primary"):
+                    st.session_state.awaiting_review = False
+                    st.session_state.running = True
+                    add_user_action("Ignore", relay, event_id=event_id)
+                    st.session_state.confirm_ignore = None
+                    st.success(f"Ignored event {event_id}")
+                    st.rerun()
+            with col2:
+                if st.button("↩️ Cancel", use_container_width=True):
+                    st.session_state.confirm_ignore = None
+                    st.rerun()
     # ============================================================
     # CLOSE
     # ============================================================
@@ -242,13 +280,17 @@ def show_event_detail(e):
             st.session_state.awaiting_review = False
             st.session_state.running = True
 
-        # DO NOT TOUCH CURRENT EVENT
+        # =========================
+        # 📋 REVIEW → NO LOG
+        # =========================
+        elif st.session_state.get("modal_mode") == "review":
+            pass 
 
-        st.session_state.closing_modal = True
+        # DO NOT TOUCH CURRENT EVENT
         st.session_state.pending_action = None
         st.session_state.modal_mode = None
         st.session_state.selected_event = None
+        st.session_state.modal_opened= False
         st.session_state.actions_clicked = False
-        st.session_state.modal_closed_time = time.time()
 
         st.rerun()

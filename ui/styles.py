@@ -521,11 +521,13 @@ div[data-testid="stVerticalBlock"]:has(.alert-anchor) {
    BANNERS
 ========================= */
 .banner {
-    padding: 10px;
-    border-radius: 8px;
-    text-align: center;
+    width: 100%;
+    padding: 14px;
+    margin: 10px 0 15px 0;
+    border-radius: 10px;
     font-weight: 600;
-    margin-bottom: 10px;
+    text-align: center;
+    font-size: 14px;
 }
 
 .banner-error {
@@ -627,23 +629,60 @@ div[data-testid="stMetricValue"] {
     border: 1px solid rgba(245, 158, 11, 0.5);
 }
 
-/* =========================
-   BUTTONS
-========================= */
+/* ========================================
+   按鈕樣式區分 (Primary 大 / Secondary 小)
+======================================== */
+
+/* --- 所有的按鈕共同樣式 (邊框、圓角) --- */
 .stButton > button {
     border-radius: 8px;
-    background: #1f2937;
-    border: 1px solid #374151;
-    color: #e5e7eb;
-    font-weight: 700;
-    font-size: 24px;
     padding: 6px 8px;
+    height: auto !important;
 }
 
-.stButton > button:hover {
-    background: #374151;
-    border: 1px solid #4b5563;
+/* --- [大按鈕] 只有 type="primary" 的按鈕 --- */
+div[data-testid="stButton"] button[kind="primary"] {
+    background: #1f2937;
+    border: 2px solid rgba(255, 255, 255, 0.25); /* 加個藍邊框區分 */
 }
+
+div[data-testid="stButton"] button[kind="primary"] p {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    color: #ffffff !important;
+}
+
+/* --- [小按鈕] 只有 type="secondary" 的按鈕 --- */
+div[data-testid="stButton"] button[kind="secondary"] {
+    background: #1f2937;
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
+}
+
+div[data-testid="stButton"] button[kind="secondary"] p {
+    font-size: 16px !important; /* 變回原樣 */
+    font-weight: 400 !important;
+    color: #e5e7eb !important;
+}
+
+/* --- [小按鈕] 只有 type="tertiary" 的按鈕 --- */
+div[data-testid="stButton"] button[kind="tertiary"] {
+    background: #1f2937;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+div[data-testid="stButton"] button[kind="tertiary"] p {
+    font-size: 14px !important; /* 變回原樣 */
+    font-weight: 400 !important;
+    color: #e5e7eb !important;
+}
+
+/* Hover 效果 */
+.stButton > button:hover {
+    background: #374151 !important;
+    border-color: #9ca3af !important;
+}
+
+
 
 /* =========================
    CONTROL ROOM TEXT
@@ -662,7 +701,8 @@ margin-top: 10px;
    EVENT LOG
 ========================= */
 div[data-testid="stDataFrame"] {
-    font-size: 13px !important;
+    font-family: 'Courier New', monospace;
+    font-size: 16px !important;
     border-radius: 8px;
     overflow: hidden;
 }
@@ -740,40 +780,77 @@ div[data-testid="stModal"] > div {
    修正 Streamlit Dialog (彈窗) 寬度與定位
 ========================= */
 
-/* 1. 強制 Dialog 變得更寬 */
-div[data-testid="stDialog"] div[role="dialog"] {
-    width: 90vw !important;       /* 佔用螢幕 90% 寬度 */
-    max-width: 2400px !important;  /* 最大寬度，可根據需求調整 */
-    min-width: 1600px !important;   /* 確保不會太窄 */
+# /* 1. 強制 Dialog 變得更寬 */
+# div[data-testid="stDialog"] div[role="dialog"] {
+#     width: 90vw !important;       /* 佔用螢幕 90% 寬度 */
+#     max-width: 2400px !important;  /* 最大寬度，可根據需求調整 */
+#     min-width: 1600px !important;   /* 確保不會太窄 */
 
-    height: 85vh !important;        /* 🔥 make it taller */
-    max-height: 100vh !important;
+#     height: 85vh !important;        /* 🔥 make it taller */
+#     max-height: 100vh !important;
   
-    background-color: #0b1a2a !important; 
+#     background-color: #0b1a2a !important; 
+#     border: 1px solid rgba(59, 130, 246, 0.3) !important;
+#     box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
+
+#     margin-top : 90px!important;       /* 從頂部開始稍微往下 */
+# }
+
+
+div[data-testid="stDialog"]:has(.dialog-big) div[role="dialog"]{
+    width: 90vw !important;
+    max-width: 2400px !important;
+    min-width: 1600px !important;
+    height: 90vh !important;
+    max-height: 120vh !important;
+    background-color: #0b1a2a !important;
     border: 1px solid rgba(59, 130, 246, 0.3) !important;
     box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
-
-    margin-top : 90px!important;       /* 從頂部開始稍微往下 */
+    margin-top: 50px !important;
 }
 
-/* 2. 確保 Dialog 內容區塊自動填滿 */
-div[data-testid="stDialog"] div[data-testid="stVerticalBlock"] {
-    width: 100% !important;
+div[data-testid="stDialog"]:has(.dialog-small) div[role="dialog"]{
+    width: 420px !important;
+    min-width: 700px !important;
+    max-width: 900px !important;
+    height: auto !important;
+    max-height: 450px !important;
+    margin-top: 500px !important;
+    background-color: #0b1a2a !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
 }
 
-/* 3. (選配) 讓表格 (Dataframe) 高度固定避免撐開太長 */
-div[data-testid="stDialog"] .stDataFrame {
-    max-height: 400px;
-    overflow-y: auto;
+/* 🔥 Hide default Streamlit dialog header */
+div[data-testid="stDialog"] div[role="dialog"] > div:first-child {
+    display: none !important;
 }
 
-# /* 4. 修改 Dialog 的背景顏色以符合你的深色主題 */
-# div[data-testid="stDialog"] div[role="dialog"] {
-    
-# }
-div[data-testid="stDialog"] div[role="dialog"] .stMarkdownContainer {
-    text-size: 32px !important;
-}   
+/* =========================
+   DIALOG FONT OVERRIDES
+========================= */
+div[role="dialog"] [data-testid="stMarkdownContainer"] * {
+    font-size: 24px !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+}
+
+div[role="dialog"] [data-testid="stMarkdownContainer"] h4 {
+    font-size: 24px !important;
+    font-weight: 800 !important;
+    color: #ffffff !important;
+    margin-bottom: 2px !important;
+}
+
+div[role="dialog"] [data-testid="stDataFrame"] {
+    font-size: 20px !important;
+}
+
+div[role="dialog"] table td,
+div[role="dialog"] table th {
+    font-size: 20px !important;
+}
+
+
 
 
 
