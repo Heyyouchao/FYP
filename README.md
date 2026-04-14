@@ -82,6 +82,15 @@ Raw data is used in Live Mode to simulate real-time conditions.
   - User actions (U)
 - Enables traceability and explainability  
 
+- Upon anomaly detection:
+  - The system generates a structured event
+  - The system enters a **frozen review state**
+  - Data streaming is paused
+  - The current event is preserved and not overwritten
+  - No new events are created until operator action
+
+This ensures stable investigation and prevents loss of context during analysis.
+
 ---
 
 ### 6. User Interface
@@ -107,6 +116,20 @@ Raw data is used in Live Mode to simulate real-time conditions.
 - Passes data through preprocessing (`engine.preprocessing`)  
 - Simulates real-world streaming conditions  
 - Produces non-deterministic behaviour via random sampling  
+- Maintains current sample during system freeze to ensure stable visualisation  
+
+### Scenario Representation
+
+The system maintains a unified `scenario` concept with mode-dependent meaning:
+
+- Debug Mode:
+  - Scenario represents the ground truth label from the dataset
+
+- Live Mode:
+  - Scenario represents the predicted class from the ML model
+  - No ground truth is available during runtime
+
+This ensures consistency in logging and UI display while maintaining realistic system behaviour.
 
 ---
 
@@ -220,6 +243,8 @@ FYP/
 - Live mode may generate rapid event streams  
 - Streamlit reruns may cause UI refresh behaviour  
 - Import reload issues may occasionally appear during development  
+- Events are persistent during investigation and will not be overwritten  
+- The system prevents new event generation while in frozen state  
 
 ---
 

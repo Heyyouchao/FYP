@@ -47,6 +47,28 @@
 - Random sampling of dataset  
 - Represents deployment conditions  
 
+### 2.3 Scenario Handling
+
+The system maintains a unified `scenario` representation with context-dependent meaning:
+
+- **Debug Mode**:
+  - Scenario represents the ground truth label from the dataset (`marker`)
+  - Used for validation and comparison
+
+- **Live Mode**:
+  - Scenario represents the predicted class from the ML model (`Final_class`)
+  - No ground truth is available in real-time operation
+
+Additionally:
+- The system distinguishes between:
+  - **Scenario** → system interpretation (prediction or selected case)
+  - **Original Scenario** → ground truth (Debug Mode only)
+
+This design ensures:
+- Consistency in logging and UI representation  
+- Realistic behaviour in live deployment  
+- Clear separation between prediction and ground truth during evaluation  
+
 ---
 
 ## 3. Data Pipeline
@@ -64,8 +86,16 @@
 - Generate clean input (`row_clean`)  
 
 ### 3.3 Streaming Logic
-- Debug Mode: sequential index increment  
-- Live Mode: random index sampling  
+- Debug Mode:
+  - Sequential index increment
+  - Supports deterministic replay
+  - Prevents index skipping after operator interaction
+
+- Live Mode:
+  - Random index sampling
+  - Maintains last index during system freeze
+  - Prevents abrupt jumps after resume
+  - Ensures stable visual continuity during review
 
 ---
 
@@ -147,10 +177,31 @@
 - Store ML results  
 
 ### 7.3 System Freeze (Review State)
-- Pause data streaming  
-- Enter **review state**  
-- Prevent automatic progression  
-- Await operator decision before any control action  
+- Pause data streaming immediately upon anomaly detection  
+- Lock current system state and event context  
+- Prevent creation of new events during review  
+- Maintain consistent data snapshot across UI components  
+- Disable automatic progression until operator action  
+
+This ensures:
+- No event overwriting during investigation  
+- Stable and traceable system behaviour  
+- Accurate alignment between physical, ML, and UI states  
+
+### 7.4 Event Persistence
+
+Once an event is created, it remains active until explicitly resolved by the operator.
+
+Key properties:
+- Events are not overwritten during review
+- New events are blocked while the system is in a frozen state
+- The current event is preserved across UI reruns
+- Event identity (Event ID) remains constant throughout the lifecycle
+
+This prevents:
+- Loss of investigation context  
+- Inconsistent logging  
+- UI-state desynchronisation  
 
 ---
 
@@ -206,7 +257,9 @@
 - Timestamp  
 - Source (Physical / IDS / User)  
 - Decision  
-- Scenario  
+- Scenario (system interpretation)  
+- Original Scenario (Debug Mode only)  
+- Action  
 
 ### 10.3 Purpose
 - Traceability  
@@ -241,12 +294,15 @@
 - Data ingestion  
 - Physical analysis  
 - ML classification  
+- Scenario determination (mode-dependent)  
 - Fusion decision  
 - Event creation  
-- **System enters review state (paused)**  
+- **System enters review state (frozen)**  
+- Event is locked and preserved  
 - Operator review  
-- Operator action (lock / restore)  
+- Operator action (investigate / acknowledge / ignore / control)  
 - Logging  
+- System resumes operation  
 
 ---
 
@@ -282,7 +338,27 @@
 - Paused (review state)  
 
 ### 14.3 State Transitions
-Idle → Running → Detection → Review (Paused) → Action → Running
+Idle → Running → Detection → Frozen (Review State) → Action → Resume → Running
+
+### 14.4 Freeze Control Logic
+
+The system implements a controlled freeze mechanism:
+
+- Triggered when:
+  - An anomaly is detected
+  - An operator selects an event for review
+
+- Behaviour during freeze:
+  - Data streaming is paused
+  - Current index is preserved
+  - PMU history is frozen
+  - UI remains responsive
+  - Event creation is disabled
+
+- Resume condition:
+  - Triggered by operator action (e.g. Acknowledge)
+
+This ensures deterministic and stable system behaviour during critical analysis.
 
 ---
 
@@ -327,6 +403,23 @@ Detect → Pause → Review → Operator Action → Control Execution
 ### 17.3 Safety
 - Reduces risk of incorrect automated response  
 - Ensures operator validation before execution  
+
+### 17.4 Event Lifecycle
+
+Each event follows a structured lifecycle:
+
+1. Detection  
+2. Event Creation  
+3. Freeze (Review State)  
+4. Investigation / Acknowledgement / Ignore  
+5. Control Action (optional)  
+6. Logging  
+7. Resume
+
+This lifecycle ensures:
+- Controlled handling of anomalies  
+- Full traceability  
+- Prevention of unintended automated actions  
 
 ---
 

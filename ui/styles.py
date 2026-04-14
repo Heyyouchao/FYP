@@ -76,7 +76,7 @@ body {
 .header-container {
     position: relative;
     background: linear-gradient(90deg, #0f172a, #1e293b);
-    padding: 12px 20px;              /* 🔥 reduced height */
+    padding: 16px 20px;              /* 🔥 reduced height */
     border-radius: 12px;
     margin-bottom: -10px;              /* 🔥 remove space below */
     border-bottom: 1px solid rgba(148,163,184,0.15);  /* subtle separator */
@@ -95,7 +95,7 @@ body {
 .header-left {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 14px;
     height: 100%;                    /* 🔥 align vertically */
 }
 

@@ -61,7 +61,6 @@ df_debug, df_live_raw = load_data()
 # MODE
 # ============================================================
 mode = st.session_state.get("mode", "Debug Mode")
-scenario = None
 
 # ============================================================
 # SESSION STATE (SAFE INIT)
@@ -73,7 +72,7 @@ defaults = {
     "current_alert_signature": None,
     "logs": [],
     "log_rows": [],
-    "event_counter": 1767,
+    "event_counter": 1567,
     "current_idx": 0,
     "selected_relay": "AUTO",
     "pmu_history": [],
@@ -89,6 +88,14 @@ for key, value in defaults.items():
 
 if "last_idx" not in st.session_state:
     st.session_state.last_idx = -1
+
+# ============================================================
+# SCENARIO INIT (SAFE + VALIDATED)
+# ============================================================
+markers = sorted(df_debug["marker"].unique())
+
+if "scenario" not in st.session_state or st.session_state.scenario not in markers:
+    st.session_state.scenario = markers[0]
 
 system_started = st.session_state.get("started", False)
 system_running = st.session_state.get("running", False)
@@ -108,6 +115,12 @@ if "locked" not in st.session_state.control_state:
 if "control_target" not in st.session_state:
     st.session_state.control_target = None
 
+if "show_banner" not in st.session_state:
+    st.session_state.show_banner = False
+
+if "just_resumed" not in st.session_state:
+    st.session_state.just_resumed = False
+
 if st.session_state.get("closing_modal"):
     st.session_state.closing_modal = False
 
@@ -117,8 +130,8 @@ if st.session_state.get("closing_modal"):
 def system_frozen():
     return (
         st.session_state.get("selected_event") is not None
-        or st.session_state.get("awaiting_review", False)
     )
+
 def modal_just_closed():
     t = st.session_state.get("modal_closed_time", 0)
     return time.time() - t < 2
@@ -357,22 +370,42 @@ def get_flagged_relays(row):
 if "current_idx" not in st.session_state:
     st.session_state.current_idx = 0
 
+if "scenario" not in st.session_state:
+    st.session_state.scenario = df_debug["marker"].iloc[0]
+
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
+
+if "last_relay" not in st.session_state:
+    st.session_state.last_relay = "--"
+
 # =========================
 # DATA PIPELINE
 # =========================
 if mode == "Debug Mode":
 
-    # fallback scenario
-    if scenario is None:
-        scenario = df_debug["marker"].iloc[0]
+    # 🔒 SINGLE SOURCE OF TRUTH
+    scenario = st.session_state.scenario
 
+    # 🔒 STRICT FILTER
     df_active = df_debug[df_debug["marker"] == scenario].reset_index(drop=True)
+
+    # 🚨 HARD CHECK
+    if df_active.empty:
+        st.error(f"❌ No data for scenario: {scenario}")
+        st.stop()
 
     # -------------------------
     # STREAM (SEQUENTIAL)
     # -------------------------
     if st.session_state.running and not system_frozen():
-        st.session_state.current_idx += 1
+
+        # 🔥 PREVENT EVENT SKIP AFTER USER ACTION
+        if st.session_state.get("just_resumed", False):
+            st.session_state.just_resumed = False
+        else:
+            st.session_state.current_idx += 1
+
         if st.session_state.current_idx >= len(df_active):
             st.session_state.current_idx = 0
 
@@ -385,33 +418,41 @@ if mode == "Debug Mode":
 
 
 # ============================================================
-# LIVE MODE (REAL RANDOM STREAM)
+# LIVE MODE (REAL RANDOM STREAM - FIXED)
 # ============================================================
 else:
 
     df_active = df_live_raw.copy().reset_index(drop=True)
 
-    # -------------------------
-    # RANDOM INDEX (REAL LIVE)
-    # -------------------------
     if not system_frozen():
-        idx = np.random.randint(0, len(df_active))
+
+        # 🔥 PREVENT JUMP AFTER RESUME
+        if st.session_state.get("just_resumed", False):
+            idx = st.session_state.get("current_idx", 0)
+            st.session_state.just_resumed = False
+        else:
+            idx = np.random.randint(0, len(df_active))
+            st.session_state.current_idx = idx   # 🔥 CRITICAL
+
     else:
         idx = st.session_state.get("current_idx", 0)
 
+    # -------------------------
+    # GET ROW
+    # -------------------------
     row_raw = df_active.iloc[idx].copy()
 
     import engine.preprocessing
     row_clean = engine.preprocessing.clean_live_row(row_raw, df_debug)
 
-    # optional debug display
     st.caption(f"Live sample from scenario: {row_raw['marker']}")
 
 
 # ============================================================
-# MODEL + RESULT (CLEAN & SAFE)
+# MODEL + RESULT
 # ============================================================
 if not system_started:
+
     final_relay = "--"
     physical_relay = "--"
 
@@ -421,54 +462,46 @@ if not system_started:
 
     result = {
         "Final_binary": 0,
-        "Final_conf": 0,
         "Final_label": "Waiting to start",
         "Final_class": "--",
-        "Path": "--",
+        "Final_conf": 0,
         "Decision": "--",
+        "Path": "--",
         "Contributing_Factors": []
     }
 
 else:
-    # -------------------------
-    # 1. PHYSICAL MODEL
-    # -------------------------
     raw_scores, norm_scores, state, top_features = classify_relay_scores(row_clean)
 
     physical_relay = max(raw_scores, key=raw_scores.get)
 
-    # -------------------------
-    # 2. ML PREDICT
-    # -------------------------
     row_model = get_model_input(row_clean, FEATURE_COLS)
     result = predict_one(row_model, FEATURE_COLS)
 
-    # -------------------------
-    # 3. FUSION
-    # -------------------------
-    final_relay, scores = get_most_affected_relay(
-        row_clean,
-        raw_scores
-    )
+    final_relay, scores = get_most_affected_relay(row_clean, raw_scores)
 
+    # 🔥 SAVE FOR HEADER (CRITICAL FIX)
+    st.session_state.last_result = result
+    st.session_state.last_relay = final_relay
 
 # ============================================================
-# HEADER DATA (SAFE)
+# 🔥 SCENARIO (CORRECT PLACE)
 # ============================================================
-if not system_started:
-    header_relay = "--"
-    header_label = "--"
-    header_result = None
-else:
-    header_relay = final_relay
-    header_label = result.get("Final_label", "--")
-    header_result = result
+scenario = (
+    st.session_state.scenario
+    if mode == "Debug Mode"
+    else result.get("Final_class", "--")
+)
 
+header_result = st.session_state.get("last_result", None)
+header_relay = st.session_state.get("last_relay", "--")
 
-# ============================================================
-# HEADER (ALWAYS RENDER ONCE)
-# ============================================================
-scenario = render_header(
+header_label = (
+    header_result.get("Final_label", "--")
+    if header_result else "--"
+)
+
+selected_scenario = render_header(
     mode,
     df_debug,
     result=header_result,
@@ -476,32 +509,41 @@ scenario = render_header(
     final_label=header_label
 )
 
+# ============================================================
+# 🔥 SCENARIO SYNC (NO INDEX RESET)
+# ============================================================
+if selected_scenario is not None:
+    if selected_scenario != st.session_state.scenario:
+
+        st.session_state.scenario = selected_scenario
+
+        # ❌ DO NOT TOUCH current_idx
+        # ❌ DO NOT TOUCH pmu_history
+        # ❌ DO NOT TOUCH logs
+
+        st.rerun()
+
 
 # ============================================================
 # 🚨 REVIEW BANNER (BOX STYLE)
 # ============================================================
-if st.session_state.get("awaiting_review", True):
-
+if st.session_state.show_banner:
     st.markdown("""
     <div style="
         width:100%;
-        padding:16px;
-        margin:15px 0;
-        border-radius:10px;
+        padding:18px 20px;
+        margin:10px 0;
+        border-radius:8px;
         text-align:center;
-        font-size:15px;
+        font-size:16px;
         font-weight:700;
-
         background:linear-gradient(90deg,#7f1d1d,#dc2626);
         color:white;
-
         border:2px solid #ef4444;
-        box-shadow:0 0 12px rgba(239,68,68,0.5);
     ">
-        🚨 ACTION REQUIRED — Review IDS Alert
+        🚨 SYSTEM FROZEN — Awaiting Analyst Review
     </div>
     """, unsafe_allow_html=True)
-
 # ============================================================
 # 4. GRID
 # ============================================================
@@ -522,10 +564,13 @@ else:
         "generator": {f"G{i}": "🟢" for i in range(1,3)},
     }
 # ============================================================
-# AUTO CREATE PHYSICAL EVENT (FIXED)
+# AUTO CREATE PHYSICAL EVENT (FIXED - NO OVERWRITE)
 # ============================================================
 if system_started:
-    if not system_frozen():
+
+    # 🔒 DO NOT CREATE NEW EVENT DURING REVIEW
+    if not system_frozen() and not st.session_state.get("awaiting_review", False):
+
         event = create_event(
             row_clean,
             raw_scores,
@@ -535,8 +580,8 @@ if system_started:
             build_physical_snapshot
         )
 
-        # ✅ ONLY SET CURRENT EVENT IF NONE ACTIVE
-        if st.session_state.current_event is None:
+        # 🔥 ONLY CREATE IF NO ACTIVE EVENT
+        if st.session_state.get("current_event") is None:
             st.session_state.current_event = event
             st.session_state.current_event_id = event["Event ID"]
 
@@ -1044,6 +1089,7 @@ with col_right:
 # ============================================================
     with col_alert:
         with st.container():
+
             st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
             flagged_relays = get_flagged_relays(row_clean)
@@ -1075,18 +1121,7 @@ with col_right:
 
 
             if (result["Final_binary"] == 1 or st.session_state.awaiting_review) and not modal_just_closed():
-                
 
-                if not st.session_state.awaiting_review and st.session_state.current_event:
-                    st.session_state.awaiting_review = True
-                    st.session_state.running = False
-
-                    st.write("running:", st.session_state.running)
-                    st.write("awaiting_review:", st.session_state.awaiting_review)
-
-                    st.session_state.locked_event_id = st.session_state.current_event_id
-                
-                st.write("DEBUG awaiting_review:", st.session_state.get("awaiting_review"))
                 scenario_id = result["Final_class"]
                 attack_type = get_attack_type(result["Final_class"])
 
@@ -1110,9 +1145,48 @@ with col_right:
                 st.markdown(f"**Scenario:** `{scenario_id}` — {result['Final_label']}")
                 st.markdown(f"**Path:** '{result['Path']}' [{result['Decision']}]")
 
+                                
                 st.markdown("### Factors")
                 for f in result["Contributing_Factors"]:
                     st.write(f"- {f}")
+
+
+                if not st.session_state.awaiting_review:
+                    # 🔥 這裡最重要：存下當前的 Index
+                    st.session_state.locked_idx = st.session_state.current_idx
+                    st.session_state.locked_event_id = st.session_state.current_event_id
+                    
+                    # 🔥 STEP 1: show banner FIRST
+                    st.session_state.show_banner = True
+                    st.session_state.awaiting_review = True
+
+
+
+                    # ============================================================
+                    # 🚨 ONLY FROZEN WARNING
+                    # ============================================================
+                    if st.session_state.get("awaiting_review"):
+
+                        st.markdown(f"""
+                        <div style="
+                            width:100%;
+                            padding:16px 18px;
+                            margin-bottom:12px;
+                            border-radius:10px;
+                            background:linear-gradient(90deg,#7f1d1d,#dc2626);
+                            color:white;
+                            font-weight:700;
+                            font-size:15px;
+                            border:2px solid #ef4444;
+                            text-align:center;
+                        ">
+                            🚨 SYSTEM FROZEN — Awaiting Analyst Review
+                            <div style="font-size:12px; margin-top:6px; opacity:0.9;">
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                    st.session_state.running = False
 
                 b1, b2, b3 = st.columns([1.5,1,1])
 
@@ -1133,6 +1207,8 @@ with col_right:
 
                             # 🔥 mark modal mode
                             st.session_state.modal_mode = "investigate"
+
+                            st.session_state.show_banner = False
 
                             # 🔥 store pending action
                             st.session_state.pending_action = e

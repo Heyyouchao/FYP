@@ -5,15 +5,25 @@ def render_header(mode, df_debug, result=None,
                   final_relay="--", final_label="--"):
 
     # ============================================================
-    # SAFE VALUES (prevents crashes)
+    # SAFE VALUES
     # ============================================================
     result = result or {}
     final_label = final_label or ""
     final_relay = final_relay or "--"
+
     running = st.session_state.get("running", False)
     awaiting_review = st.session_state.get("awaiting_review", False)
-    locked = st.session_state.get("locked_event_id")
 
+    # ============================================================
+    # SCENARIO STATE INIT (DO THIS ONCE)
+    # ============================================================
+    if "scenario" not in st.session_state:
+        markers = sorted(df_debug["marker"].unique())
+        st.session_state.scenario = markers[0]
+
+    # ============================================================
+    # LAYOUT
+    # ============================================================
     col_left, col_center, col_right = st.columns([3, 6, 2])
 
     # ============================================================
@@ -33,30 +43,40 @@ def render_header(mode, df_debug, result=None,
                 st.badge("LIVE", color="red")
 
         # -------------------------
-        # SCENARIO
+        # SCENARIO SELECTOR
         # -------------------------
         with c_scenario:
             if mode == "Debug Mode":
-                scenario = st.selectbox(
+
+                markers = sorted(df_debug["marker"].unique())
+
+                # safety check
+                if st.session_state.scenario not in markers:
+                    st.session_state.scenario = markers[0]
+
+                selected = st.selectbox(
                     "",
-                    sorted(df_debug["marker"].unique()),
+                    markers,
+                    index=markers.index(st.session_state.scenario),
                     key="header_scenario",
                     label_visibility="collapsed"
                 )
+
+                # 🔥 ONLY update scenario (NO RESET)
+                if selected != st.session_state.scenario:
+                    st.session_state.scenario = selected
+
             else:
-                scenario = None
+                st.caption("Live Stream")
 
         # -------------------------
-        # STATUS (FIXED LOGIC 🔥)
-        # =========================================================
-        # PRIORITY:
-        # LOCK > REVIEW > RUNNING > IDLE
-        # =========================================================
+        # STATUS
+        # PRIORITY: REVIEW > RUNNING > IDLE
+        # -------------------------
         with c_status:
 
             c1, c2 = st.columns([1, 1])
 
-            # MAIN STATE
             with c1:
                 if awaiting_review:
                     st.badge("PAUSED", color="yellow")
@@ -65,7 +85,6 @@ def render_header(mode, df_debug, result=None,
                 else:
                     st.badge("IDLE", color="gray")
 
-            # REVIEW BADGE
             with c2:
                 if awaiting_review:
                     st.badge("🚨 REVIEW", color="red")
@@ -89,11 +108,10 @@ def render_header(mode, df_debug, result=None,
 
         c_icon, c_relay, c_label, c_system = st.columns([1, 1, 3, 2])
 
-        label = final_label
-        label_raw = label.lower()
+        label_raw = final_label.lower()
 
         # -------------------------
-        # ICON (system condition)
+        # ICON
         # -------------------------
         with c_icon:
 
@@ -101,7 +119,7 @@ def render_header(mode, df_debug, result=None,
                 st.badge("⚪", color="gray")
 
             elif result.get("Final_binary") == 1:
-                st.badge("🔴", color="red")  # attack
+                st.badge("🔴", color="red")
 
             elif "fault" in label_raw:
                 st.badge("🟡", color="yellow")
@@ -116,13 +134,10 @@ def render_header(mode, df_debug, result=None,
         # RELAY
         # -------------------------
         with c_relay:
-            if final_relay != "--":
-                st.badge(final_relay, color="blue")
-            else:
-                st.badge("--", color="gray")
+            st.badge(final_relay if final_relay != "--" else "--", color="blue")
 
         # -------------------------
-        # FINAL LABEL (SAFE 🔥)
+        # LABEL
         # -------------------------
         with c_label:
 
@@ -139,28 +154,24 @@ def render_header(mode, df_debug, result=None,
 
             else:
                 if "maintenance" in label_raw:
-                    st.badge(label, color="blue")
-
+                    st.badge(final_label, color="blue")
                 elif "fault" in label_raw:
-                    st.badge(label, color="yellow")
-
+                    st.badge(final_label, color="yellow")
                 elif "normal" in label_raw:
-                    st.badge(label, color="green")
-
+                    st.badge(final_label, color="green")
                 else:
-                    st.badge(label, color="gray")
+                    st.badge(final_label, color="gray")
 
         # -------------------------
         # SYSTEM STATE
         # -------------------------
         with c_system:
 
-            if st.session_state.get("awaiting_review"):
+            if awaiting_review:
                 st.badge("System Locked", color="red")
-            elif st.session_state.get("running"):
+            elif running:
                 st.badge("System Online", color="green")
-
             else:
                 st.badge("System Idle", color="gray")
 
-    return scenario
+    return None

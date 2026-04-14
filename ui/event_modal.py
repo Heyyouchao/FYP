@@ -21,7 +21,7 @@ def show_event_detail(e):
     # ============================================================
     st.markdown(f"""
         <div style='text-align:center; width:100%; margin-top:10px; margin-bottom:10px'>
-            <span style='font-size:40px; font-weight:700;'>
+            <span style='font-size:64px; font-weight:700;'>
                 Event Detail
             </span>
         </div>
@@ -262,7 +262,7 @@ def show_event_detail(e):
     # ============================================================
     # CLOSE
     # ============================================================
-    st.markdown(" ")
+    st.markdown("---")
 
     if st.button("Close", use_container_width=True):
 
