@@ -60,7 +60,7 @@ def add_user_action(action, final_relay, event_id=None):
         }
     )
 
-def create_event(row_clean, raw_scores, norm_scores, physical_layer, final_relay, build_physical_snapshot):
+def create_event(row_clean, raw_scores, norm_scores, fusion_scores, physical_layer, final_relay, build_physical_snapshot):
     event_id = f"E-{st.session_state.event_counter}"
     st.session_state.event_counter += 1
 
@@ -68,6 +68,7 @@ def create_event(row_clean, raw_scores, norm_scores, physical_layer, final_relay
         row_clean,
         raw_scores,
         norm_scores,
+        fusion_scores,
         physical_layer
     )
 

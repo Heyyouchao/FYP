@@ -27,7 +27,7 @@ st.markdown(load_css(), unsafe_allow_html=True)
 from engine.inference import predict_one, M1, FEATURE_COLS
 from engine.utils import get_attack_type, readable_feature_pop, readable_feature_full
 from engine.disturbance import classify_relay_scores
-from engine.scoring import get_most_affected_relay
+from engine.scoring import compute_fusion_scores, get_most_affected_relay
 from engine.measurements import get_measurements
 from engine.pmu_history import update_pmu_history
 from engine.physical_layer import process_event
@@ -115,9 +115,6 @@ if "locked" not in st.session_state.control_state:
 if "control_target" not in st.session_state:
     st.session_state.control_target = None
 
-if "show_banner" not in st.session_state:
-    st.session_state.show_banner = False
-
 if "just_resumed" not in st.session_state:
     st.session_state.just_resumed = False
 
@@ -130,6 +127,7 @@ if st.session_state.get("closing_modal"):
 def system_frozen():
     return (
         st.session_state.get("selected_event") is not None
+        or st.session_state.get("selected_component") is not None
     )
 
 def modal_just_closed():
@@ -142,6 +140,27 @@ def get_active_event():
 # ============================================================
 # HELPERS
 # ============================================================
+def all_green(physical_layer):
+
+    # relays
+
+    for r in physical_layer["relay"].values():
+
+        if r["color"] != "🟢":
+
+            return False
+
+    # other components
+
+    for group in ["line", "breaker", "bus", "generator"]:
+
+        for val in physical_layer[group].values():
+
+            if val != "🟢":
+
+                return False
+
+    return True
 def get_model_input(row_clean, feature_cols):
     return row_clean.drop(
         ["marker", "label", "label_name"],
@@ -232,7 +251,7 @@ def apply_user_controls(physical_layer):
 # ============================================================
 # PHYSICAL SNAPSHOT (P_full)
 # ============================================================
-def build_physical_snapshot(row_clean, raw_scores, norm_scores, physical_layer):
+def build_physical_snapshot(row_clean, raw_scores, norm_scores,fusion_scores, physical_layer):
 
     # -------------------------
     # 1. MEASUREMENTS
@@ -263,6 +282,7 @@ def build_physical_snapshot(row_clean, raw_scores, norm_scores, physical_layer):
         r_data = physical_layer.get("relay", {}).get(r, {})
         raw = raw_scores.get(r, 0)
         norm = norm_scores.get(r, 0)
+        fusion = fusion_scores.get(r, 0)
 
         flag = "⚠️" if row_clean.get(f"{r}-PA:Z_inf_flag", 0) == 1 else "--"
         flow = get_relay_flow(r)
@@ -278,6 +298,7 @@ def build_physical_snapshot(row_clean, raw_scores, norm_scores, physical_layer):
             "State": r_data.get("color", "⚪"),
             "Raw": round(raw, 2),
             "Norm": round(norm, 2),
+            "Fusion": round(fusion, 2),
             "Flag": flag,
             "Affect": flow.get("affects_on", "--"),
             "Top Causes": ", ".join(causes) if causes else "Stable"
@@ -409,7 +430,8 @@ if mode == "Debug Mode":
         if st.session_state.current_idx >= len(df_active):
             st.session_state.current_idx = 0
 
-    idx = st.session_state.current_idx
+    idx = min(st.session_state.current_idx, len(df_active) - 1)
+    st.session_state.current_idx = idx
 
     # -------------------------
     # GET ROW
@@ -436,6 +458,16 @@ else:
 
     else:
         idx = st.session_state.get("current_idx", 0)
+
+    # -------------------------
+    # SAFE INDEX
+    # -------------------------
+    if df_active.empty:
+        st.error("❌ No live data available.")
+        st.stop()
+
+    idx = min(idx, len(df_active) - 1)
+    st.session_state.current_idx = idx
 
     # -------------------------
     # GET ROW
@@ -484,6 +516,11 @@ else:
     st.session_state.last_result = result
     st.session_state.last_relay = final_relay
 
+if system_started:
+    fusion_scores = compute_fusion_scores(row_clean, raw_scores)
+else:
+    fusion_scores = {f"R{i}": 0 for i in range(1,5)}
+
 # ============================================================
 # 🔥 SCENARIO (CORRECT PLACE)
 # ============================================================
@@ -525,26 +562,6 @@ if selected_scenario is not None:
 
 
 # ============================================================
-# 🚨 REVIEW BANNER (BOX STYLE)
-# ============================================================
-if st.session_state.show_banner:
-    st.markdown("""
-    <div style="
-        width:100%;
-        padding:18px 20px;
-        margin:10px 0;
-        border-radius:8px;
-        text-align:center;
-        font-size:16px;
-        font-weight:700;
-        background:linear-gradient(90deg,#7f1d1d,#dc2626);
-        color:white;
-        border:2px solid #ef4444;
-    ">
-        🚨 SYSTEM FROZEN — Awaiting Analyst Review
-    </div>
-    """, unsafe_allow_html=True)
-# ============================================================
 # 4. GRID
 # ============================================================
 if system_started:
@@ -569,12 +586,18 @@ else:
 if system_started:
 
     # 🔒 DO NOT CREATE NEW EVENT DURING REVIEW
-    if not system_frozen() and not st.session_state.get("awaiting_review", False):
+    if (
+        not system_frozen() 
+        and not st.session_state.get("awaiting_review", False)
+    ):
+
+        fusion_scores = compute_fusion_scores(row_clean, raw_scores)
 
         event = create_event(
             row_clean,
             raw_scores,
             norm_scores,
+            fusion_scores,
             physical_layer,
             final_relay,
             build_physical_snapshot
@@ -654,7 +677,7 @@ with col_left:
                 st.metric("Current", f"{data['current']:.1f} A")
                 st.metric("Frequency", f"{data['frequency']:.2f} Hz")
 
-                st.subheader("🔋 Sequence")
+                st.subheader("Sequence (I)")
                 metric_row("Positive", f"{data['pos']:.1f}%", level="normal")
 
                 neg_level="alert" if data["neg"] > 5 else None
@@ -662,14 +685,26 @@ with col_left:
 
                 metric_row("Zero", f"{data['zero']:.1f}%", level="normal")
 
-                st.subheader("⚡ Relay Insight")
+                st.subheader("Relay Insight")
                 metric_row("Physical Relay", physical_relay)
                 metric_row("Final Relay", final_relay)
-                dist = raw_scores[current_display_relay]
+                # -------------------------
+                # SCORES
+                # -------------------------
 
-                dist_level = "alert" if dist > 1.5 else "warning" if dist > 1.0 else None
-                metric_row("Disturbance", f"{raw_scores[current_display_relay]:.2f}", level=dist_level)
+                # Physical score (raw)
+                physical_score = raw_scores[current_display_relay]
 
+                # Fusion score (final)
+                fusion_score = fusion_scores[current_display_relay]  # 👈 assumes you already have fusion scores
+
+                # Optional: show physical score (recommended for clarity)
+                phys_level = "alert" if physical_score > 1.5 else "warning" if physical_score > 1.0 else None
+                metric_row("Physical Score", f"{physical_score:.2f}", level=phys_level)
+
+                # Fusion score (main decision metric)
+                fusion_level = "alert" if fusion_score > 1.5 else "warning" if fusion_score > 1.0 else None
+                metric_row("Fusion Score", f"{fusion_score:.2f}", level=fusion_level)
 
                 if data.get("impedance_flag", 0) == 1:
                     st.markdown(
@@ -733,7 +768,30 @@ with col_right:
         with st.container():
             st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
-            st.subheader("System State & Context")
+            # ============================================================
+            # 🟢 NORMAL STATE MESSAGE (BASED ON GRID COLOURS)
+            # ============================================================
+            if (
+                system_started
+                and all_green(physical_layer)
+                and not st.session_state.get("awaiting_review", False)
+                and st.session_state.get("selected_component") is None
+            ):
+                caption = "✔ All components operating normally — inspection optional"
+            else:
+                caption = ""
+           
+            st.markdown(f"""
+            <div style="
+                display:flex;
+                justify-content:space-between;
+                align-items:center;
+                margin-bottom:10px;
+            ">
+                <h3 style="margin:0;">System State & Context</h3>
+                <span style="color:#ffffff; font-size:24px;">{caption}</span>
+            </div>
+            """, unsafe_allow_html=True)
             
             col_grid, col_table = st.columns([2, 1]) # grid bigger
 
@@ -770,6 +828,7 @@ with col_right:
                         st.session_state.selected_component = None
                     else:
                         st.session_state.selected_component = selected_name
+                    st.session_state.running = False
 
                     st.rerun()
 
@@ -857,6 +916,7 @@ with col_right:
 
                         raw = raw_scores[selected]
                         norm = norm_scores[selected]
+                        fusion_score = fusion_scores[selected]
 
                         # 🔥 HEADER
                         control = st.session_state.control_state
@@ -870,7 +930,7 @@ with col_right:
                             relay_color = r_data["color"]
                             status = "Normal" if relay_color == "🟢" else "Alert"
 
-                        st.markdown(f"### Selected - {selected} {relay_color}({status})")
+                        st.markdown(f"### Selected - {selected} {relay_color}({status}) - Fusion Score: {fusion_score:.2f}")
 
                         # ROW: score + chain
                         flow = get_relay_flow(selected)
@@ -1023,7 +1083,14 @@ with col_right:
                     # CLEAR
                     # =========================
                     if st.button("Clear", use_container_width=True, type="tertiary"):
+
+                        # 🔥 remove selection (exit inspection mode)
                         st.session_state.selected_component = None
+
+                        # 🔥 RESUME system IF not in review
+                        if not st.session_state.get("awaiting_review", False):
+                            st.session_state.running = True
+
                         st.rerun()
 
 
@@ -1093,6 +1160,7 @@ with col_right:
             st.markdown('<div class="card-anchor"></div>', unsafe_allow_html=True)
 
             flagged_relays = get_flagged_relays(row_clean)
+            has_flag = len(flagged_relays) > 0
 
             if flagged_relays:
                 flag_text = " | ".join(flagged_relays)
@@ -1119,14 +1187,30 @@ with col_right:
                 )
             current_time = datetime.datetime.now().strftime("%I:%M %p")
 
+            should_freeze = (
+                result["Final_binary"] == 1
+                or has_flag
+                or st.session_state.awaiting_review
+            )
+            event_id = st.session_state.get("current_event_id") or "--"
 
-            if (result["Final_binary"] == 1 or st.session_state.awaiting_review) and not modal_just_closed():
-
-                scenario_id = result["Final_class"]
-                attack_type = get_attack_type(result["Final_class"])
-
-                st.markdown(f"🕒 {current_time}")
-
+            st.markdown(
+                f"""
+                <div style="
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    font-size:18px;
+                    font-weight:600;
+                    color:#ffffff;
+                ">
+                    <span>{current_time}</span>
+                    <span>{event_id}</span>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            if result["Final_binary"] == 1:
                 st.markdown(
                     f"""
                     <div class="alert-bar">
@@ -1140,11 +1224,29 @@ with col_right:
                     """,
                     unsafe_allow_html=True
                 )
+            else:        
+                st.markdown(
+                    f"""
+                    <div class="normal-bar">
+                        <div class="normal-bar-left">
+                            ✅ Normal
+                        </div>
+                        <div class="normal-bar-right">
+                            {result['Final_conf']:.1%}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            if should_freeze and not modal_just_closed():
+
+                scenario_id = result["Final_class"]
+                attack_type = get_attack_type(result["Final_class"])
+
                 # st.markdown('</div>', unsafe_allow_html=True)
                 st.markdown(f"**Type:** {attack_type}")
                 st.markdown(f"**Scenario:** `{scenario_id}` — {result['Final_label']}")
                 st.markdown(f"**Path:** '{result['Path']}' [{result['Decision']}]")
-
                                 
                 st.markdown("### Factors")
                 for f in result["Contributing_Factors"]:
@@ -1155,17 +1257,27 @@ with col_right:
                     # 🔥 這裡最重要：存下當前的 Index
                     st.session_state.locked_idx = st.session_state.current_idx
                     st.session_state.locked_event_id = st.session_state.current_event_id
-                    
                     # 🔥 STEP 1: show banner FIRST
-                    st.session_state.show_banner = True
                     st.session_state.awaiting_review = True
-
-
 
                     # ============================================================
                     # 🚨 ONLY FROZEN WARNING
                     # ============================================================
                     if st.session_state.get("awaiting_review"):
+
+                        reason = []
+
+                        if result["Final_binary"] == 1:
+                            reason.append("Attack Detected")
+
+                        if has_flag:
+                            reason.append("Flag Detected")
+                        
+                        # 🔥 ADD THIS
+                        if not reason:
+                            reason.append("Manual Review — Press Resume to continue")
+
+                        reason_text = " & ".join(reason) if reason else "Manual Review"
 
                         st.markdown(f"""
                         <div style="
@@ -1180,9 +1292,7 @@ with col_right:
                             border:2px solid #ef4444;
                             text-align:center;
                         ">
-                            🚨 SYSTEM FROZEN — Awaiting Analyst Review
-                            <div style="font-size:12px; margin-top:6px; opacity:0.9;">
-                            </div>
+                            🚨 SYSTEM FROZEN — Awaiting Analyst Review ({reason_text})
                         </div>
                         """, unsafe_allow_html=True)
 
@@ -1254,21 +1364,6 @@ with col_right:
                         st.rerun()
 
             else:
-                border_color = "rgba(255,255,255,0.08)" 
-                st.markdown(f"🕒 {current_time}")
-                st.markdown(
-                    f"""
-                    <div class="normal-bar">
-                        <div class="normal-bar-left">
-                            ✅ Normal
-                        </div>
-                        <div class="normal-bar-right">
-                            {result['Final_conf']:.1%}
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
                 st.markdown(f"**Condition:** {result['Final_label']}")
                 st.markdown(f"**Path:** {result['Path']}")
 
@@ -1304,6 +1399,7 @@ with col_right:
                         st.session_state.modal_mode = "review"
                         st.session_state.selected_event = e
                         st.session_state.running = False
+                        st.session_state.awaiting_review = True
         #=========================
         # ⚡ ACTIONS
         # =========================
