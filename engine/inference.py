@@ -108,14 +108,15 @@ from engine.utils import get_top_features
 # ============================================================
 def predict_one(row, feature_cols):
 
-    # 🔥 FIXED (correct feature alignment)
     X = pd.DataFrame([row])[feature_cols]
 
+    # ---------------- M1 ----------------
     p_attack = M1.predict_proba(X)[0][ATTACK_LABEL_IDX]
 
     result = {
         "M1_conf": p_attack,
         "M3_conf": None,
+        "Leaf_model": None,
         "Leaf_conf": None,
         "Final_binary": None,
         "Final_class": None,
@@ -126,7 +127,9 @@ def predict_one(row, feature_cols):
         "Contributing_Factors": None
     }
 
-    # ---------------- NON-ATTACK ----------------
+    # ============================================================
+    # ---------------- NON-ATTACK (M1 → M2) ----------------
+    # ============================================================
     if p_attack < TAU_GATE:
 
         probs = M2.predict_proba(X)[0]
@@ -138,21 +141,28 @@ def predict_one(row, feature_cols):
         result.update({
             "Final_binary": 0,
             "Final_label": M2_LABELS[pred],
+            "Leaf_model": "M2",         # ✅ unified
+            "Leaf_conf": conf,
             "Final_conf": conf,
             "Decision": "M2_DIRECT",
             "Path": "M1 → M2",
             "Contributing_Factors": factors
         })
 
+    # ============================================================
+    # ---------------- ATTACK PATH ----------------
+    # ============================================================
     else:
-        # ---------------- M3 ----------------
+
         probs = M3.predict_proba(X)[0]
         pred = int(np.argmax(probs))
         conf = float(probs[pred])
 
         result["M3_conf"] = conf
 
-        # ---------------- FALLBACK ----------------
+        # ========================================================
+        # ---------------- FALLBACK (M1 → M3 → M2) ----------------
+        # ========================================================
         if (conf < CONF_FALLBACK) and (p_attack < TAU_GATE + SAFE_MARGIN):
 
             probs = M2.predict_proba(X)[0]
@@ -164,24 +174,34 @@ def predict_one(row, feature_cols):
             result.update({
                 "Final_binary": 0,
                 "Final_label": M2_LABELS[pred],
+                "Leaf_model": "M2",     # ✅ unified
+                "Leaf_conf": conf,
                 "Final_conf": conf,
                 "Decision": "FALLBACK_TO_M2",
                 "Path": "M1 → M3 → M2",
                 "Contributing_Factors": factors
             })
 
+        # ========================================================
+        # ---------------- LEAF MODELS ----------------
+        # ========================================================
         else:
-            # ---------------- LEAF ----------------
+
             if pred == 0:
                 model = M4
+                name = "M4"
                 inv_map = M4_INV_MAP
                 path = "M1 → M3 → M4"
+
             elif pred == 1:
                 model = M5
+                name = "M5"
                 inv_map = M5_INV_MAP
                 path = "M1 → M3 → M5"
+
             else:
                 model = M6
+                name = "M6"
                 inv_map = M6_INV_MAP
                 path = "M1 → M3 → M6"
 
@@ -197,8 +217,9 @@ def predict_one(row, feature_cols):
                 "Final_binary": 1,
                 "Final_class": scenario_id,
                 "Final_label": SCENARIO_LOOKUP.get(scenario_id),
-                "Final_conf": leaf_conf,
+                "Leaf_model": name,
                 "Leaf_conf": leaf_conf,
+                "Final_conf": leaf_conf,
                 "Decision": "ATTACK_CONFIRMED",
                 "Path": path,
                 "Contributing_Factors": factors

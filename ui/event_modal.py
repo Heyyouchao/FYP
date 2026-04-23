@@ -115,6 +115,7 @@ def show_event_detail(e):
 
     col1, _, col2, _, col3 = st.columns([1.25, 0.08, 1, 0.08, 1])
 
+    display_height = 490
     # ============================================================
     # PHYSICAL
     # ============================================================
@@ -127,7 +128,7 @@ def show_event_detail(e):
             st.dataframe(pd.DataFrame(P_full.get("Relay Analysis", [])), use_container_width=True, hide_index=True)
 
             st.markdown("#### System State")
-            st.dataframe(pd.DataFrame(P_full.get("System State", [])), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(P_full.get("System State", [])), use_container_width=True, hide_index=True, height=display_height)
         else:
             st.info("No physical data")
 
@@ -139,18 +140,114 @@ def show_event_detail(e):
         st.markdown(" ")
 
         if m_data:
+            EXCLUDE_KEYS = {
+                "M1_conf",
+                "M3_conf",
+                "M2_conf",
+                "Leaf_conf",
+                "Leaf_model",
+                "Contributing_Factors"  # ✅ hide raw
+            }
+
+            def fmt(x):
+                return f"{x:.0%}" if isinstance(x, (int, float)) else "--"
+
             for key, value in m_data.items():
+
+                if key in EXCLUDE_KEYS:
+                    continue
+
                 st.markdown(f"""
                 <div style="
-                    font-size:20px;
+                    font-size:18px;
                     font-weight:bold;
                     color:#ffffff;
-                    margin-top:8px;
-                    margin-bottom:10px;
+                    margin-top:5px;
+                    margin-bottom:8px;
                 ">
                     {key}: {value}
                 </div>
                 """, unsafe_allow_html=True)
+
+                # =========================
+                # MODEL CONFIDENCE (after Confidence)
+                # =========================
+                if key == "Confidence":
+                    m1 = m_data.get("M1_conf")
+                    m3 = m_data.get("M3_conf")
+                    m2 = m_data.get("M2_conf")
+                    leaf = m_data.get("Leaf_conf")
+                    leaf_name = m_data.get("Leaf_model")
+                    path = str(m_data.get("Path", "")).replace("->", "→")
+
+                    st.markdown(f"""
+                    <div style="
+                        font-size:19px;
+                        font-weight:bold;
+                        color:#ffffff;
+                        margin-top:12px;
+                        margin-bottom:10px;
+                    ">
+                        Model Confidence
+                    </div>
+                    """, unsafe_allow_html=True)
+                    # CASE 1: M1 → M2
+                    if path == "M1 → M2":
+                        st.write(f"M1 (Attack Probability): {fmt(m1)}")
+                        st.write(f"M2 (System Classifier): {fmt(m2 or leaf)}")
+
+                    # CASE 2: FALLBACK
+                    elif path == "M1 → M3 → M2":
+                        st.write(f"M1 (Attack Probability): {fmt(m1)}")
+                        st.write(f"M3(Attack Type): {fmt(m3)}")
+                        st.write(f"M2 (Fallback): {fmt(m2 or leaf)}")
+
+                    # CASE 3: ATTACK
+                    else:
+                        st.write(f"M1 (Attack Probability): {fmt(m1)}")
+                        st.write(f"M3 (Attack Type): {fmt(m3)}")
+                        st.write(f"{leaf_name} (Final): {fmt(leaf)}")
+
+                    # =========================
+                    # 🔥 TOP FEATURES (ADD HERE)
+                    # =========================
+                    factors = m_data.get("Contributing_Factors")
+
+                    if factors:
+                        st.markdown(f"""
+                        <div style="
+                            font-size:19px;
+                            font-weight:bold;
+                            color:#ffffff;
+                            margin-top:12px;
+                            margin-bottom:10px;
+                        ">
+                            Top Contributing Features
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                        for item in factors:
+                            try:
+                                importance, feature = item.split(" — ")
+                            except:
+                                # fallback if format unexpected
+                                feature = item
+                                importance = ""
+
+                            # ✅ make it nicer
+                            if feature.startswith("R"):
+                                feature = f"Relay {feature}"
+
+                            st.markdown(f"""
+                            <div style="
+                                font-size:17px;
+                                margin-left:10px;
+                                margin-bottom:6px;
+                            ">
+                                • {feature}: {importance}
+                            </div>
+                            """, unsafe_allow_html=True)
+
         else:
             st.warning("Awaiting IDS decision")
 
@@ -262,8 +359,7 @@ def show_event_detail(e):
     # ============================================================
     # CLOSE
     # ============================================================
-    st.markdown("---")
-
+    
     if st.button("Close", use_container_width=True):
 
         if st.session_state.get("modal_mode") == "investigate":

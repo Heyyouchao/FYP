@@ -117,7 +117,15 @@ def build_M(result, final_relay, scenario, mode, action):
         "Path": result["Path"],
         "Scenario": result["Final_class"] if result["Final_binary"] == 1 else "--",
         "Original Scenario": scenario if mode == "Debug Mode" else "--",
-        "Action": action
+        "Action": action,
+        # 🔥 ADD THESE
+        "M1_conf": result.get("M1_conf"),
+        "M3_conf": result.get("M3_conf"),
+        "Leaf_model": result.get("Leaf_model"),
+        "Leaf_conf": result.get("Leaf_conf"),
+        # optional (if you added it in notebook)
+        "M2_conf": result.get("M2_conf"),
+        "Contributing_Factors": result.get("Contributing_Factors") or [],
     }
 
 def add_log_row(event_id, source, data):
