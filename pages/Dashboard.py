@@ -127,7 +127,7 @@ if st.session_state.get("closing_modal"):
 def system_frozen():
     return (
         st.session_state.get("selected_event") is not None
-        or st.session_state.get("selected_component") is not None
+        # or st.session_state.get("selected_component") is not None
     )
 
 def modal_just_closed():
@@ -446,18 +446,32 @@ else:
 
     df_active = df_live_raw.copy().reset_index(drop=True)
 
-    if not system_frozen():
+    # 🔥 FREEZE CONDITIONS
+    event_active = st.session_state.get("awaiting_review", False)
+    inspecting = st.session_state.get("selected_component") is not None
 
-        # 🔥 PREVENT JUMP AFTER RESUME
+    freeze_sample = event_active or inspecting
+
+    # -------------------------
+    # STREAM CONTROL
+    # -------------------------
+    if freeze_sample:
+        # 🔒 KEEP SAME SAMPLE
+        idx = st.session_state.get(
+            "locked_idx",
+            st.session_state.get("current_idx", 0)
+        )
+    else:
+        # 🔄 NORMAL STREAM
         if st.session_state.get("just_resumed", False):
             idx = st.session_state.get("current_idx", 0)
             st.session_state.just_resumed = False
         else:
             idx = np.random.randint(0, len(df_active))
-            st.session_state.current_idx = idx   # 🔥 CRITICAL
 
-    else:
-        idx = st.session_state.get("current_idx", 0)
+        # 🔥 SAVE CURRENT + LOCKED INDEX
+        st.session_state.current_idx = idx
+        st.session_state.locked_idx = idx
 
     # -------------------------
     # SAFE INDEX
@@ -706,22 +720,38 @@ with col_left:
                 fusion_level = "alert" if fusion_score > 1.5 else "warning" if fusion_score > 1.0 else None
                 metric_row("Fusion Score", f"{fusion_score:.2f}", level=fusion_level)
 
-                if data.get("impedance_flag", 0) == 1:
+
+                flagged_relays = get_flagged_relays(row_clean)
+
+                if current_display_relay in flagged_relays:
                     st.markdown(
                         f"""
                         <div class="impedance-error-bar">
                             <div class="impedance-error-bar-left">
-                                ⚠️ Impedance anomaly detected
+                                ⚠️ Impedance anomaly detected (this relay)
                             </div>
                         </div>
                         """,
                         unsafe_allow_html=True
                     )
+
+                elif len(flagged_relays) > 0:
+                    st.markdown(
+                        f"""
+                        <div class="impedance-error-bar">
+                            <div class="impedance-error-bar-left">
+                                ⚠️ Impedance anomaly in {', '.join(flagged_relays)}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
                 else:
                     st.markdown(
                         f"""
                         <div class="impedance-normal-bar">
-                            <div class="impedance-normal-bar-left">
+                            <div class="impedance-error-bar-left">
                                 ✅ Impedance normal
                             </div>
                         </div>
@@ -828,7 +858,9 @@ with col_right:
                         st.session_state.selected_component = None
                     else:
                         st.session_state.selected_component = selected_name
-                    st.session_state.running = False
+
+                        st.session_state.locked_idx = st.session_state.current_idx
+                    # st.session_state.running = False
 
                     st.rerun()
 
