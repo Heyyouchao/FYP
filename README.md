@@ -213,13 +213,6 @@ streamlit run app.py
 - Ignore → Dismiss alert and resume system operation  
 - Investigate → Open detailed event analysis popup
 
----
-
-## 🔗 System Workflow
-
-```
-Input Data → Physical Analysis + ML Detection → Fusion → Event → UI ↔ User Actions
-```
 
 ---
 
