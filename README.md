@@ -1,23 +1,44 @@
 # ⚡ Interactive Explainable AI for Cyber-Attack Detection in Power Systems  
 
 ### Hybrid Cyber-Physical Intrusion Detection System (H-IDS)
-
+A safety-critical, human-in-the-loop cyber-physical intrusion detection system for smart power grids.
 ---
 
 ## 📖 Overview
 
 The Hierarchical Intrusion Detection System (H-IDS) is a cyber-physical 
-monitoring platform designed for power grid systems.  
+monitoring platform designed for power grid systems.
 
 It integrates physical disturbance analysis, machine learning detection, 
 and interactive operator control into a unified real-time dashboard.
 
-This system is developed as part of a research project to simulate 
-and analyse cyber-physical attacks in smart grids.
+Developed as part of a research project, the system simulates and analyses 
+cyber-physical attacks in smart grids.
 
-This system follows a human-in-the-loop design, where detection decisions are validated and controlled by an operator before system continuation.
+It follows a human-in-the-loop design, where detection decisions are 
+validated and controlled by an operator before system continuation.
+
+The platform supports decision-making in safety-critical environments 
+rather than fully automating control actions.
+
+This approach demonstrates how AI can be safely integrated into critical 
+infrastructure by combining automated detection with controlled human oversight.
+
+## 🔗 System Workflow
+
+![Workflow](./image/workflow.png)
 
 ---
+
+
+## 🚀 Key Contributions
+
+- Hybrid cyber-physical intrusion detection framework  
+- Fusion-based anomaly scoring for relay-level analysis  
+- Human-in-the-loop decision support with controlled intervention  
+- Event-driven system with freeze-and-review mechanism  
+- Explainable AI outputs for operational transparency
+- Safe AI deployment framework for critical infrastructure environments    
 
 ## 📊 Dataset
 
@@ -34,7 +55,7 @@ Raw data is used in Live Mode to simulate real-time conditions.
 - Identify the most affected relay (physical impact)  
 - Classify attack scenarios using machine learning  
 - Provide real-time visualisation and explainability  
-- Enable human-in-the-loop decision making  
+- Enable human-in-the-loop decision-making  
 
 ---
 
@@ -58,12 +79,14 @@ Raw data is used in Live Mode to simulate real-time conditions.
 ---
 
 ### 3. Machine Learning Layer
-- Performs attack detection and classification  
-- Outputs confidence, scenario, and contributing factors  
+- Performs hierarchical attack detection and classification (M1–M6)  
+- M1 acts as a gating model (normal vs attack)  
+- Includes a fallback mechanism for low-confidence predictions  
+- Outputs probabilistic confidence, scenario classification, and contributing factors for explainability   
 - Ensures consistent feature alignment during inference  
 
+![ML Hierarchy](./image/ml_hierarchy.png)
 📄 Detailed ML explanation → `ML_SYSTEM.md`
-
 ---
 
 ### 4. Fusion Layer
@@ -72,6 +95,7 @@ Raw data is used in Live Mode to simulate real-time conditions.
   for decision support  
 - Determines the most affected relay  
 - Produces a unified system decision  
+- Computes fusion scores to quantify anomaly severity  
 
 ---
 
@@ -79,8 +103,9 @@ Raw data is used in Live Mode to simulate real-time conditions.
 - Tracks system activity as structured events:
   - Physical (P)
   - IDS / ML (M)
-  - User actions (U)
+  - User Actions (U)
 - Enables traceability and explainability  
+- Implements a freeze-and-review mechanism to enable safe investigation  
 
 - Upon anomaly detection:
   - The system generates a structured event
@@ -92,6 +117,14 @@ Raw data is used in Live Mode to simulate real-time conditions.
 This ensures stable investigation and prevents loss of context during analysis.
 
 ---
+
+## 🏗 System Architecture
+
+![Architecture](./image/architecture.png)
+
+---
+
+
 
 ### 6. User Interface
 - Built with Streamlit  
@@ -214,6 +247,12 @@ FYP/
 
 ├── notebook/              # Development notebooks (EDA, training)
 
+├── image/                 # Diagrams and UI screenshots (README visuals)
+│   ├── workflow.png
+│   ├── architecture.png
+│   ├── ml_hierarchy.png
+│   └── dashboard.png
+
 ├── app.py                 # Application entry point
 ├── README.md              # Project overview and usage
 └── requirements.txt       # Dependencies
@@ -248,6 +287,14 @@ FYP/
 
 ---
 
+## 🧠 Design Philosophy
+
+- Safety-first: avoids unsafe automated decisions  
+- Human-in-the-loop: operator validates all critical actions  
+- Explainability: decisions supported by interpretable features  
+- Hybrid intelligence: combines physical reasoning with machine learning  
+
+
 ## 📌 Notes
 
 - Live Mode does NOT use true real-time data  
@@ -262,7 +309,7 @@ FYP/
 - This improves:
   - Interpretability  
   - Reliability  
-  - Debugging capability  
+  - Traceability of system decisions  
 
 - The hybrid design combines:
   - Data-driven ML detection  
@@ -280,3 +327,7 @@ FYP/
 ## 👩‍💻 Author
 
 Final Year Project — Cyber-Physical Intrusion Detection System
+
+---
+
+This system demonstrates how AI can be safely integrated into critical infrastructure by combining automated detection with controlled human oversight.

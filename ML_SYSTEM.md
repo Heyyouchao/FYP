@@ -168,6 +168,18 @@ The ML system uses thresholds to support hierarchical decision-making:
 These parameters are determined through validation experiments  
 to balance detection performance and robustness.
 
+## 🔁 Fallback Mechanism
+
+The system incorporates a safety-first fallback mechanism to handle low-confidence predictions.
+
+Since the framework prioritises high recall in M1, some samples may be routed to the attack branch even when classification confidence is uncertain.
+
+When:
+- M3 confidence falls below a defined threshold, and  
+- M1 probability remains close to the routing boundary  
+
+the system reverts to M2 instead of committing to
+
 ---
 
 ## 🧠 Explainability

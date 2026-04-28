@@ -10,6 +10,8 @@
 - Provide interpretable and controlled decision-making  
 - Support operator-assisted response instead of fully automated enforcement  
 
+This is particularly important in safety-critical infrastructure, where incorrect automated decisions may lead to system instability or service disruption.
+
 ---
 
 ### 1.2 Design Objectives
@@ -46,6 +48,7 @@
 - Simulated real-time operation  
 - Random sampling of dataset  
 - Represents deployment conditions  
+- Reflects non-deterministic behaviour observed in real-world deployment scenarios  
 
 ### 2.3 Scenario Handling
 
@@ -81,8 +84,8 @@ This design ensures:
 ### 3.2 Data Flow
 - Row selection based on mode  
 - Preprocessing:
-  - remove unused fields  
-  - align feature columns  
+  - Removal of irrelevant or unused fields  
+  - Alignment of feature columns to ensure consistency with model input schema  
 - Generate clean input (`row_clean`)  
 
 ### 3.3 Streaming Logic
@@ -118,6 +121,7 @@ This design ensures:
 - Compute disturbance scores per relay  
 - Apply directional weighting  
 - Identify abnormal deviations  
+- Preserve interpretability by maintaining direct mapping between features and physical components  
 
 ### 4.4 Outputs
 - Raw disturbance scores  
@@ -132,6 +136,7 @@ This design ensures:
 ### 5.1 Purpose
 - Classify system state  
 - Detect type of anomaly or attack  
+- Provide probabilistic outputs to support downstream fusion and decision-making  
 
 ### 5.2 Inputs
 - Processed feature vector  
@@ -152,16 +157,78 @@ This design ensures:
 ## 6. Fusion Mechanism
 
 ### 6.1 Purpose
-- Combine physical and ML outputs  
 
-### 6.2 Logic
-- Select relay with highest disturbance score  
-- Combine with ML classification result  
+The fusion mechanism integrates outputs from the physical disturbance analysis and the machine learning (ML) layer to produce a unified system-level decision.
+
+This allows the system to:
+- Combine data-driven detection with physics-based reasoning  
+- Improve robustness against noisy or ambiguous signals  
+- Provide a more reliable indication of anomaly severity  
+
+---
+
+### 6.2 Fusion Logic
+
+The fusion process operates at the relay level.
+
+- The **physical layer** provides:
+  - Raw disturbance scores  
+  - Normalised scores  
+
+- The **ML layer** provides:
+  - Binary detection (normal vs attack)  
+  - Classification confidence  
+
+These outputs are combined to produce a **fusion score** for each relay.
+
+The fusion score reflects:
+- The magnitude of physical disturbance  
+- The likelihood of an attack inferred by the ML model  
+
+The relay with the highest fusion score is selected as the **most affected relay**.
+
+---
 
 ### 6.3 Output
+
+The fusion mechanism produces:
+
 - Final affected relay  
-- Final system label  
+- Final system label (normal or attack scenario)  
 - Decision path explanation  
+- Fusion score per relay (exposed in the user interface)
+
+---
+
+### 6.4 Fusion Score Interpretation
+
+The fusion score represents a **combined anomaly severity indicator**, integrating both physical and ML-based evidence.
+
+- Higher scores indicate stronger agreement between:
+  - Physical disturbance  
+  - ML detection  
+
+- Lower scores indicate:
+  - Weak disturbance  
+  - Or uncertain classification  
+
+Fusion scores are used to:
+- Prioritise affected components  
+- Support operator interpretation  
+- Guide decision-making during investigation  
+
+---
+
+### 6.5 Role in Decision Support
+
+The fusion mechanism plays a central role in transforming the system from a detection tool into a decision-support system.
+
+By combining multiple sources of information, it:
+- Reduces false positives from isolated signals  
+- Provides consistent relay-level insight  
+- Enhances explainability through unified scoring  
+
+This enables operators to make informed decisions based on both system behaviour and model predictions.
 
 ---
 
@@ -187,6 +254,8 @@ This ensures:
 - No event overwriting during investigation  
 - Stable and traceable system behaviour  
 - Accurate alignment between physical, ML, and UI states  
+
+This design ensures that anomalies are not only detected but are also preserved as discrete, reviewable system states, enabling structured investigation and preventing loss of critical context.
 
 ### 7.4 Event Persistence
 
@@ -265,28 +334,147 @@ This prevents:
 - Traceability  
 - Post-event analysis  
 - Debugging support  
+- Supports auditability and post-event forensic analysis  
 
 ---
+
 
 ## 11. User Interface
 
 ### 11.1 Dashboard Layout
-- Header (mode, status)  
-- Left panel (controls, measurements)  
-- Center panel (grid visualisation)  
-- Right panel (alerts and actions)  
 
-### 11.2 Visualisation
-- Grid diagram  
-- PMU waveform  
-- Metric displays  
+The dashboard follows a **three-panel architecture**:
 
-### 11.3 Design Principles
-- Clarity over complexity  
-- Separation of detection and control  
-- Real-time feedback  
+- **Left Panel**
+  - Relay selection (Auto / R1–R4)
+  - Real-time measurements (Voltage, Current, Frequency)
+  - Sequence components (Positive, Negative, Zero)
+  - Relay insight:
+    - Physical Relay
+    - Final Relay
+    - Physical Score
+    - Fusion Score
+  - System control (Start / Pause)
+
+- **Center Panel**
+  - Interactive grid diagram (cyber-physical system)
+  - Component-level selection (relay, breaker, line, bus, generator)
+  - Control Room panel:
+    - Switch, PDC, IDS, Syslog status
+  - Context-aware component inspection:
+    - Selected relay displays:
+      - Raw / Normalised / Fusion scores
+      - Event chain (cause → effect)
+      - Top contributing features (Cause)
+      - Cyber logs
+  - Live PMU waveform visualisation (Phase A, B, C)
+
+- **Right Panel (IDS Alert Panel)**
+  - Real-time IDS alert panel for anomaly notification
+  - Detection result (Normal / Attack)
+  - Confidence score
+  - Scenario + decision path
+  - Contributing factors
+  - System freeze alert banner
+  - Review actions:
+    - Investigate
+    - Acknowledge
+    - Ignore
+  - Control actions:
+    - Isolate
+    - Lock
+    - Restore
+
+- **Event Log Panel**
+  - Displays structured events (Physical, IDS, User)
+  - Groups events by Event ID
+  - Supports detailed inspection via popup
 
 ---
+
+### 11.2 Header System
+
+The system includes a dynamic header that provides:
+
+- Current system mode (Debug / Live)
+- System status (Running / Frozen / Paused)
+- Latest detected scenario
+- Most affected relay
+- Latest classification result
+
+The header updates in real-time using the most recent inference output, ensuring a consistent global view of system state.
+
+---
+
+### 11.3 Event Investigation Interface (Popup)
+
+When an anomaly is detected, the system enters a **frozen review state** and presents a detailed event investigation popup.
+
+This popup provides a structured, multi-layer diagnostic view including:
+
+- **Event metadata**
+  - Event ID, timestamp, affected relay  
+
+- **Event flow**
+  - Timeline from physical detection → ML classification → user action  
+
+- **Physical measurements**
+  - Voltage, current, frequency, sequence components across relays  
+
+- **Relay analysis**
+  - Raw score  
+  - Normalised score  
+  - Fusion score  
+  - Affected component  
+  - Top contributing causes  
+
+- **System state**
+  - Status of breakers, lines, buses, and generators  
+  - Propagation of disturbance across the grid  
+
+- **Machine learning output**
+  - Final decision (classification)  
+  - Confidence score  
+  - Decision path (e.g. M1 → M2)  
+  - Model-level confidence  
+
+- **Operator actions**
+  - Investigate, Acknowledge, Ignore  
+  - Isolate, Lock, Restore  
+
+The system remains paused during this process to preserve event context, ensuring consistent analysis and supporting reliable operator decision-making.
+
+---
+
+### 11.4 Operator Interaction
+
+The interface supports direct operator control through:
+
+- **Investigate** → Opens detailed event popup  
+- **Acknowledge** → Confirms event and resumes system  
+- **Ignore** → Triggers confirmation dialog before dismissing event  
+
+Additional control actions include:
+
+- **Isolate** → Disconnect affected relay  
+- **Lock** → Force relay into persistent fault state  
+- **Restore** → Return system to normal operation  
+
+All actions are logged with timestamps and associated event IDs.
+
+---
+
+### 11.5 Design Principles
+
+The dashboard is designed based on:
+
+- **Clarity** → Separation of monitoring, detection, and control  
+- **Real-time feedback** → Continuous system updates  
+- **Human-in-the-loop control** → Operator validation before execution  
+- **Explainability** → Fusion scores and contributing factors are explicitly presented to support operator decision-making
+- **Safety-first interaction** → Freeze + confirmation mechanisms  
+
+This design transforms the interface from a monitoring tool into a decision-support system, enabling safe and informed operator-guided responses in a critical environment.
 
 ## 12. System Flow Summary
 
@@ -298,11 +486,14 @@ This prevents:
 - Fusion decision  
 - Event creation  
 - **System enters review state (frozen)**  
+- Event investigation interface is presented to the operator
 - Event is locked and preserved  
 - Operator review  
 - Operator action (investigate / acknowledge / ignore / control)  
 - Logging  
 - System resumes operation  
+
+This structured flow ensures controlled system progression and prevents uncontrolled propagation of incorrect decisions.
 
 ---
 
@@ -323,6 +514,11 @@ This prevents:
 - Model dependency  
 - Simplified grid representation  
 - Manual intervention may introduce response delay  
+
+### 13.4 Explainability
+
+- System decisions are supported by both physical reasoning and ML outputs  
+- Enhances transparency and operator trust  
 
 ---
 
@@ -389,6 +585,7 @@ This ensures deterministic and stable system behaviour during critical analysis.
 ### 16.3 Combined Insight
 - Align physical and ML outputs  
 - Provide operator understanding  
+- Enables cross-validation between physical and ML interpretations  
 
 ---
 
@@ -421,6 +618,7 @@ This lifecycle ensures:
 - Full traceability  
 - Prevention of unintended automated actions  
 
+This framework ensures that control actions are not triggered solely by model predictions, reducing the risk of unsafe automated responses.
 ---
 
 ## 18. Performance and Responsiveness
@@ -494,3 +692,4 @@ This lifecycle ensures:
 - Multi-layer detection  
 - Human validation before enforcement  
 - Reduced risk of false positives causing unintended actions  
+- The fusion approach improves resilience against single-point detection failures  
