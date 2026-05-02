@@ -6,8 +6,7 @@ A safety-critical, human-in-the-loop cyber-physical intrusion detection system f
 
 ## 📖 Overview
 
-The Hierarchical Intrusion Detection System (H-IDS) is a cyber-physical 
-monitoring platform designed for power grid systems.
+The Hierarchical Intrusion Detection System (H-IDS) is a cyber-physical monitoring platform designed for power grid systems.
 
 It integrates physical disturbance analysis, machine learning detection, 
 and interactive operator control into a unified real-time dashboard.
@@ -46,6 +45,8 @@ The system uses PMU-based power system data derived from simulated scenarios.
 
 Cleaned datasets are used for model training and Debug Mode.  
 Raw data is used in Live Mode to simulate real-time conditions.
+The dataset used for runtime is located in:
+data/merged/multi_class_dataset_clean_FULL.csv
 
 ---
 
@@ -167,6 +168,7 @@ This ensures consistency in logging and UI display while maintaining realistic s
 ---
 
 ## 🚀 How to Run
+Python version: 3.11 (tested)
 
 ### 1. Install dependencies
 ```bash

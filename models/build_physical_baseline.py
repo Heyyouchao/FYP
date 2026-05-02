@@ -133,3 +133,38 @@ model = {
 joblib.dump(model, "models/physical_baseline.pkl")
 
 print("\n✅ Baseline model saved to models/physical_baseline.pkl")
+
+# ============================================================
+# BASELINE STATISTICS TABLE (FOR FIGURE B.10)
+# ============================================================
+
+# Create summary table
+baseline_stats = baseline_rows[all_cols].describe().T
+
+# Optional: select top features to keep it readable
+baseline_stats = baseline_stats[["mean", "std", "min", "max"]]
+baseline_stats = baseline_stats.head(20)  # keep first 20 features only
+
+# ============================================================
+# SAVE AS IMAGE
+# ============================================================
+
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.axis('off')
+
+table = ax.table(
+    cellText=baseline_stats.round(3).values,
+    colLabels=baseline_stats.columns,
+    rowLabels=baseline_stats.index,
+    loc='center'
+)
+
+table.auto_set_font_size(False)
+table.set_fontsize(8)
+
+plt.savefig("baseline_stats.png", bbox_inches='tight')
+plt.close()
+
+print("✅ Baseline statistics image saved as baseline_stats.png")
