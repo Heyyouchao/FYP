@@ -42,6 +42,16 @@ from engine.explainer import(
 from ui.grid_diagram import draw_grid
 from helpers.event_helpers import add_log_row, get_current_event, add_user_action, now_full, create_event, build_M
 
+@st.cache_resource
+def get_global_alert_state():
+    return {
+        "is_attack":       False,
+        "has_flag":        False,
+        "started":         False,
+        "awaiting_review": False,
+        "investigating":   False,
+        "paused":          False,
+    }
 # ============================================================
 # LOAD DATA (SAFE)
 # ============================================================
@@ -127,7 +137,6 @@ if st.session_state.get("closing_modal"):
 def system_frozen():
     return (
         st.session_state.get("selected_event") is not None
-        # or st.session_state.get("selected_component") is not None
     )
 
 def modal_just_closed():
@@ -774,19 +783,23 @@ with col_left:
             # 🔥 always resume system
             st.session_state.running = True
             st.session_state.started = True
-
+            st.session_state.freeze_reason = ""
             # 🔥 clear stuck states (important for Resume)
-            st.session_state.awaiting_review = False
             st.session_state.selected_event = None
             st.session_state.modal_mode = None
             st.session_state.modal_opened = False
             st.session_state.pending_action = None
             st.session_state.actions_clicked = False
 
+            shared_alert = get_global_alert_state()
+            shared_alert["paused"] = False
+
             st.rerun()
         if st.button("⏸ Pause", use_container_width=True, type="primary"):
             st.session_state.started = True
             st.session_state.running = False
+            shared_alert = get_global_alert_state()
+            shared_alert["paused"] = True
             st.rerun()
         
 # ============================================================
@@ -1291,6 +1304,7 @@ with col_right:
                     st.session_state.locked_event_id = st.session_state.current_event_id
                     # 🔥 STEP 1: show banner FIRST
                     st.session_state.awaiting_review = True
+                    st.session_state.running = False
 
                     # ============================================================
                     # 🚨 ONLY FROZEN WARNING
@@ -1387,6 +1401,7 @@ with col_right:
                             )
                             
                             st.session_state.awaiting_review = False
+                            st.session_state.freeze_reason = ""
                             st.session_state.running = True
 
 
@@ -1671,6 +1686,13 @@ if st.session_state.get("selected_event"):
 # 🔥 CLOSE MAIN CONTENT (VERY IMPORTANT)
 # ============================================================
 st.markdown('</div>', unsafe_allow_html=True)
+
+shared_alert = get_global_alert_state()
+shared_alert["started"]         = st.session_state.get("started", False)
+shared_alert["awaiting_review"] = st.session_state.get("awaiting_review", False)
+shared_alert["is_attack"]       = result["Final_binary"] == 1
+shared_alert["has_flag"]        = has_flag
+shared_alert["investigating"]   = st.session_state.get("selected_event") is not None
 
 # ============================================================
 # AUTO REFRESH

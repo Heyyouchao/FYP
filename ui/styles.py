@@ -801,8 +801,8 @@ div[data-testid="stDialog"]:has(.dialog-big) div[role="dialog"]{
     width: 90vw !important;
     max-width: 2400px !important;
     min-width: 1600px !important;
-    height: 90vh !important;
-    max-height: 120vh !important;
+    height: 85vh !important;
+    max-height: 110vh !important;
     background-color: #0b1a2a !important;
     border: 1px solid rgba(59, 130, 246, 0.3) !important;
     box-shadow: 0 10px 40px rgba(0,0,0,0.7) !important;
