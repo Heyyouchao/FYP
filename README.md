@@ -23,12 +23,27 @@ rather than fully automating control actions.
 This approach demonstrates how AI can be safely integrated into critical 
 infrastructure by combining automated detection with controlled human oversight.
 
+---
+
 ## 🔗 System Workflow
 
 ![Workflow](./image/workflow.png)
 
 ---
 
+## ⚡ Quick Guide
+
+### Quick System Workflow
+
+![Quick Guide](./image/quick-guide.png)
+
+---
+
+### 🖥 Dashboard Overview
+
+![Dashboard Overview](./image/dashboard-overview.png)
+
+---
 
 ## 🚀 Key Contributions
 
@@ -38,6 +53,8 @@ infrastructure by combining automated detection with controlled human oversight.
 - Event-driven system with freeze-and-review mechanism  
 - Explainable AI outputs for operational transparency
 - Safe AI deployment framework for critical infrastructure environments    
+
+---
 
 ## 📊 Dataset
 
@@ -246,6 +263,8 @@ FYP/
 │   ├── workflow.png
 │   ├── architecture.png
 │   ├── ml_hierarchy.png
+│   ├── quick-guide.png
+│   ├── dashboard-overview.png
 │   └── dashboard.png
 
 ├── app.py                 # Application entry point
@@ -282,6 +301,16 @@ FYP/
 
 ---
 
+## 🖥 External Alert Interface
+
+- Connected to the H-IDS platform for real-time visual alert feedback  
+- Reflects live IDS alert states and operator events  
+- Supports operator awareness during critical events  
+- Can function as part of an operator notification or monitoring panel  
+- All detection, fusion, and decision-making logic remain within the main H-IDS platform
+
+---
+
 ## 🧠 Design Philosophy
 
 - Safety-first: avoids unsafe automated decisions  
@@ -289,6 +318,7 @@ FYP/
 - Explainability: decisions supported by interpretable features  
 - Hybrid intelligence: combines physical reasoning with machine learning  
 
+---
 
 ## 📌 Notes
 
