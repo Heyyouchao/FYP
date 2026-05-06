@@ -198,8 +198,8 @@ div[data-testid="stMarkdownContainer"] p {
     font-size: 32px !important;
     font-weight: bold !important;
     color: #31333F !important;
-    margin-top: 20px !important;  /* 讓這段文字單獨向下移 */
-    display: block;               /* 確保 margin 生效 */
+    margin-top: 20px !important; 
+    display: block;              
 }
 
 /* =========================
@@ -630,20 +630,20 @@ div[data-testid="stMetricValue"] {
 }
 
 /* ========================================
-   按鈕樣式區分 (Primary 大 / Secondary 小)
+   Different Button Styles (Primary / Secondary)
 ======================================== */
 
-/* --- 所有的按鈕共同樣式 (邊框、圓角) --- */
+/* --- Same Style for All buttons (border, border-radius) --- */
 .stButton > button {
     border-radius: 8px;
     padding: 6px 8px;
     height: auto !important;
 }
 
-/* --- [大按鈕] 只有 type="primary" 的按鈕 --- */
+/* --- [big button] only type="primary" button --- */
 div[data-testid="stButton"] button[kind="primary"] {
     background: #1f2937;
-    border: 2px solid rgba(255, 255, 255, 0.25); /* 加個藍邊框區分 */
+    border: 2px solid rgba(255, 255, 255, 0.25); /* add blue border */
 }
 
 div[data-testid="stButton"] button[kind="primary"] p {
@@ -652,26 +652,26 @@ div[data-testid="stButton"] button[kind="primary"] p {
     color: #ffffff !important;
 }
 
-/* --- [小按鈕] 只有 type="secondary" 的按鈕 --- */
+/* --- [middle button] only type="secondary" button --- */
 div[data-testid="stButton"] button[kind="secondary"] {
     background: #1f2937;
     border: 1.5px solid rgba(255, 255, 255, 0.12);
 }
 
 div[data-testid="stButton"] button[kind="secondary"] p {
-    font-size: 16px !important; /* 變回原樣 */
+    font-size: 16px !important; /* back to original */
     font-weight: 400 !important;
     color: #e5e7eb !important;
 }
 
-/* --- [小按鈕] 只有 type="tertiary" 的按鈕 --- */
+/* --- [small button] only type="tertiary" button --- */
 div[data-testid="stButton"] button[kind="tertiary"] {
     background: #1f2937;
     border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 div[data-testid="stButton"] button[kind="tertiary"] p {
-    font-size: 14px !important; /* 變回原樣 */
+    font-size: 14px !important; /* back to original */
     font-weight: 400 !important;
     color: #e5e7eb !important;
 }
@@ -776,15 +776,12 @@ div[data-testid="stModal"] > div {
 /* ========================================
    🔥 STREAMLIT DIALOG FULL WIDTH FIX
 ======================================== */
-/* =========================
-   修正 Streamlit Dialog (彈窗) 寬度與定位
-========================= */
 
-# /* 1. 強制 Dialog 變得更寬 */
+# /* 1. Force Dialog Wider Width  */
 # div[data-testid="stDialog"] div[role="dialog"] {
-#     width: 90vw !important;       /* 佔用螢幕 90% 寬度 */
-#     max-width: 2400px !important;  /* 最大寬度，可根據需求調整 */
-#     min-width: 1600px !important;   /* 確保不會太窄 */
+#     width: 90vw !important;       /* 90% of the screen width */
+#     max-width: 2400px !important;  /* maximum width, adjust as needed */
+#     min-width: 1600px !important;   /* ensure it's not too narrow */
 
 #     height: 85vh !important;        /* 🔥 make it taller */
 #     max-height: 100vh !important;
