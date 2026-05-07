@@ -479,7 +479,7 @@ else:
             idx = np.random.randint(0, len(df_active))
 
         # 🔥 SAVE CURRENT + LOCKED INDEX
-        st.session_state.current_idx = idx
+        st.session_state.current_idx = idx 
         st.session_state.locked_idx = idx
 
     # -------------------------

@@ -25,6 +25,26 @@ infrastructure by combining automated detection with controlled human oversight.
 
 ---
 
+## 🎥 Showcase
+
+### ▶ Demo Video
+Watch the H-IDS demonstration video:
+
+[YouTube Demo](https://youtu.be/Avv5EKqEMGs)
+
+If the YouTube link is unavailable, a local copy is included:
+
+[Download Demo Video](./showcase/H_IDS_Demo.mp4)
+
+---
+
+### 📄 Poster
+Download the project poster:
+
+[Download Poster](./showcase/H_IDS_Poster.pdf)
+
+---
+
 ## 🔗 System Workflow
 
 ![Workflow](./image/workflow.png)
@@ -36,6 +56,9 @@ infrastructure by combining automated detection with controlled human oversight.
 ### Quick System Workflow
 
 ![Quick Guide](./image/quick-guide.png)
+
+The PMU waveform display updates after events are processed or acknowledged by the operator.
+
 
 ---
 
@@ -62,8 +85,11 @@ The system uses PMU-based power system data derived from simulated scenarios.
 
 Cleaned datasets are used for model training and Debug Mode.  
 Raw data is used in Live Mode to simulate real-time conditions.
-The dataset used for runtime is located in:
+The dataset used during runtime is located in:
+
+```text
 data/merged/multi_class_dataset_clean_FULL.csv
+```
 
 ---
 
@@ -201,6 +227,34 @@ streamlit run app.py
 - Debug Mode → controlled simulation  
 - Live Mode → simulated real-time behaviour  
 
+### 4. Optional External Alert Interface
+
+An optional external alert display can be connected through the local network for real-time operator notification.
+
+Start the application using:
+
+```bash
+streamlit run app.py --server.address 0.0.0.0
+```
+
+Obtain the local IP address of the host device:
+
+```bash
+ipconfig getifaddr en0
+```
+
+Example output:
+
+```text
+192.168.0.114
+```
+
+Open the following address on the external device connected to the same network:
+
+```text
+http://192.168.0.114:8501/Alert_Light
+```
+
 ---
 
 ## 🖥 Key Features
@@ -258,6 +312,10 @@ FYP/
 │   └── build_physical_baseline.py   # Generates baseline model (scaler, thresholds, stats)
 
 ├── notebook/              # Development notebooks (EDA, training)
+
+├── showcase/
+│   ├── H_IDS_Demo.mp4
+│   └── H_IDS_Poster.pdf
 
 ├── image/                 # Diagrams and UI screenshots (README visuals)
 │   ├── workflow.png
@@ -351,7 +409,8 @@ FYP/
 
 ## 👩‍💻 Author
 
-Final Year Project — Cyber-Physical Intrusion Detection System
+Cheryl Chau  
+Final Year Project — BSc Computer Science and Artificial Intelligence
 
 ---
 
